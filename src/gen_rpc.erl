@@ -3,7 +3,7 @@
 %% @end
 %%%-------------------------------------------------------------------
 
--module(gen_rpc_app).
+-module(gen_rpc).
 
 -behaviour(application).
 
