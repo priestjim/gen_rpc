@@ -1,0 +1,10 @@
+{application, gen_rpc,
+    [{description, "An Erlang/Elixir RPC library for out-of-band messaging"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {gen_rpc, []}},
+    {applications, [kernel, stdlib, crypto, ssl]},
+    {env,[
+    ]},
+    {modules, []}]
+}.
