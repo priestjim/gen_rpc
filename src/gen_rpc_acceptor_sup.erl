@@ -4,14 +4,14 @@
 %%% Copyright 2015 Panagiotis Papadomitsos, Inc. All Rights Reserved.
 %%%
 
--module(gen_rpc_sup).
+-module(gen_rpc_acceptor_sup).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
 -behaviour(supervisor).
 
 %%% Supervisor functions
--export([start_link/0]).
+-export([start_link/0, start_child/1]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -20,13 +20,15 @@
 %%% Supervisor functions
 %%% ===================================================
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link(?MODULE, []).
+
+start_child(Node) ->
+    supervisor:start_child(?MODULE, [Node]).
 
 %%% ===================================================
 %%% Supervisor callbacks
 %%% ===================================================
 init([]) ->
-    {ok, {{one_for_all, 0, 1}, [
-        {gen_rpc_receiver_sup, {gen_rpc_receiver_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_receiver_sup]},
-        {gen_rpc_sender_sup, {gen_rpc_sender_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_sender_sup]}
+    {ok, {{simple_one_for_one, 100, 1}, [
+        {gen_rpc_acceptor, {gen_rpc_acceptor,start_link,[]}, transient, 5000, worker, [gen_rpc_acceptor]}
     ]}}.

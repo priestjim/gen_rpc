@@ -4,7 +4,7 @@
 %%% Copyright 2015 Panagiotis Papadomitsos, Inc. All Rights Reserved.
 %%%
 
--module(gen_rpc_clock).
+-module(gen_rpc_sender).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour

@@ -13,6 +13,9 @@
 %%% Application callbacks
 -export([start/2, stop/1]).
 
+%%% Library interface
+-export([call/3, call/4, cast/3, cast/4]).
+
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
@@ -21,3 +24,18 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+%%% ===================================================
+%%% Library interface
+%%% ===================================================
+call(Node, M, F) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F) ->
+    call(Node, M, F, []).
+
+call(Node, M, F, A) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F), is_atom(A) ->
+    {ok, Node, M, F, A}.
+
+cast(Node, M, F) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F) ->
+    cast(Node, M, F, []).
+
+cast(Node, M, F, A) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F), is_atom(A) ->
+    {ok, Node, M, F, A}.

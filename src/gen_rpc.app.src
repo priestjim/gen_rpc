@@ -3,10 +3,8 @@
     {vsn, "0.1.0"},
     {registered, []},
     {mod, {gen_rpc, []}},
-    {registered, [gen_rpc_sup, gen_rpc_socket_sup, gen_rpc_clock]},
+    {registered, [gen_rpc_sup, gen_rpc_receiver_sup, gen_rcp_send_sup]},
     {applications, [kernel, stdlib, lager, sasl, crypto, asn1, public_key, ssl]},
-    {env,[
-        {tcp_port_base, 5555}
-    ]},
+    {env,[]},
     {modules, []}]
 }.

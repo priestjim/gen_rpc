@@ -4,7 +4,7 @@
 %%% Copyright 2015 Panagiotis Papadomitsos, Inc. All Rights Reserved.
 %%%
 
--module(gen_rpc_sup).
+-module(gen_rpc_sender_sup).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -26,7 +26,6 @@ start_link() ->
 %%% Supervisor callbacks
 %%% ===================================================
 init([]) ->
-    {ok, {{one_for_all, 0, 1}, [
-        {gen_rpc_receiver_sup, {gen_rpc_receiver_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_receiver_sup]},
-        {gen_rpc_sender_sup, {gen_rpc_sender_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_sender_sup]}
+    {ok, {{simple_one_for_one, 100, 1}, [
+        {gen_rpc_send, {gen_rpc_send,start_link,[]}, transient, 5000, worker, [gen_rpc_send]}
     ]}}.
