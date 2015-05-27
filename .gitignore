@@ -7,6 +7,7 @@ _*
 *.swp
 *.swo
 .erlang.cookie
+.DS_Store
 rebar.lock
 ebin
 log
@@ -18,3 +19,4 @@ _plugins
 _tdeps
 logs
 _build
+rebar3
