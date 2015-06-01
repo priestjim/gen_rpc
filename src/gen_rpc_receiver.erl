@@ -12,9 +12,12 @@
 %%% Behaviour
 -behaviour(gen_server).
 
+%%% Used for debug printing messages when in test
+-include("include/debug.hrl").
+
 %%% Local state
--record(state, {supervisor :: pid(),
-                node :: atom(),
+-record(state, {client_ip :: tuple(),
+                client_node :: atom(),
                 listener :: port(),
                 acceptor :: port()}).
 
@@ -35,10 +38,10 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
-start_link(Node) when is_atom(Node), Node =/= node() ->
+start_link(Node) when is_atom(Node) ->
     gen_server:start_link(?MODULE, {Node}, []).
 
-stop(Pid) ->
+stop(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, stop).
 
 %%% ===================================================
@@ -51,13 +54,15 @@ get_port(Pid) when is_pid(Pid) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Node}) ->
+    ?debug("Starting receiver for node [~s]", [Node]),
     process_flag(trap_exit, true),
-    {ok, SupPid} = gen_rpc_acceptor_sup:start_link(),
+    ClientIp = get_remote_node_ip(Node),
     case gen_tcp:listen(0, ?DEFAULT_TCP_OPTS) of
         {ok, Socket} ->
+            ?debug("Receiver for node [~s] started successfully", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
-            {ok, #state{supervisor = SupPid,
-                        node = Node,
+            {ok, #state{client_ip = ClientIp,
+                        client_node = Node,
                         listener = Socket,
                         acceptor = Ref}};
         {error, Reason} ->
@@ -65,8 +70,9 @@ init({Node}) ->
     end.
 
 %% Returns the dynamic port the current TCP server listens to
-handle_call(get_port, _From, #state{listener = Socket} = State) ->
+handle_call(get_port, _From, #state{listener=Socket} = State) ->
     {ok, Port} = inet:port(Socket),
+    ?debug("Port for socket [~p] is set to [~B]", [Socket, Port]),
     {reply, {ok, Port}, State};
 
 %% Gracefully stop
@@ -81,31 +87,34 @@ handle_call(Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%% Acceptor handler
-handle_info({inet_async, ListSock, Ref, {ok, CliSocket}},
-            #state{node=Node, listener=ListSock, acceptor=Ref} = State) ->
+handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
+            #state{client_ip=ClientIp, client_node=Node, listener=ListSock, acceptor=Ref} = State) ->
     try
-        case set_sockopt(ListSock, CliSocket) of
-            ok              -> ok;
+        ?debug("Request received from node [~s] with IP [~w]. Starting acceptor process.", [Node, ClientIp]),
+        %% Start an acceptor process. We need to provide the acceptor
+        %% process with our designated node IP and name so enforcement
+        %% of those attributes can be made for security reasons.
+        %% We do NOT want to link to the process, if it dies, it's the
+        %% client's responsibility to reconnect
+        {ok, AccPid} = gen_rpc_acceptor_sup:start_child(ClientIp, Node),
+        case set_sockopt(ListSock, AccSocket) of
+            ok -> ok;
             {error, Reason} -> exit({set_sockopt, Reason})
         end,
-
-        %% New client connected - spawn a new process using the simple_one_for_one
-        %% supervisor.
-        {ok, Pid} = gen_rpc_acceptor_sup:start_child(Node),
-        ok = gen_tcp:controlling_process(CliSocket, Pid),
-        %% Instruct the new FSM that it owns the socket.
-        gen_rpc_acceptor:set_socket(Pid, CliSocket),
-
-        %% Signal the network driver that we are ready to accept another connection
-        NewRef = case prim_inet:async_accept(ListSock, -1) of
-            {ok,    _NewRef} -> _NewRef;
-            {error, _NewRef} -> exit({async_accept, inet:format_error(_NewRef)})
-        end,
-        {noreply, State#state{acceptor=NewRef}}
-    catch exit:Why ->
-        error_logger:error_msg("Error in async accept: ~p.\n", [Why]),
-        {stop, Why, State}
+        ok = gen_tcp:controlling_process(AccSocket, AccPid),
+        ok = gen_rpc_acceptor:set_socket(AccPid, AccSocket),
+        %% We want the acceptor to drop the connection, so we remain
+        %% open to accepting new connections, otherwise
+        %% passive connections will remain open and leave us prone to
+        %% a DoS file descriptor depletion attack
+        case prim_inet:async_accept(ListSock, -1) of
+            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef}};
+            {error, NewRef} -> exit({async_accept, inet:format_error(NewRef)})
+        end
+    catch
+        exit:ExitReason ->
+            error_logger:error_msg("Error in async accept: ~p.\n", [ExitReason]),
+            {stop, ExitReason, State}
     end;
 
 handle_info({inet_async, ListSock, Ref, Error}, #state{listener=ListSock, acceptor=Ref} = State) ->
@@ -116,8 +125,12 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 %% Terminate cleanly by closing the listening socket
+%% TODO: Implement handling for exit signals from linked acceptor
+%% process. We shoudn't die when they die but they should die when we
+%% do.
 terminate(_Reason, #state{listener=Listener}) ->
-    ok = gen_tcp:close(Listener).
+    (catch gen_tcp:close(Listener)),
+    ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -126,15 +139,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Private functions
 %%% ===================================================
 %% Taken from prim_inet.  We are merely copying some socket options from the
-%% listening socket to the new client socket.
-set_sockopt(ListSock, CliSocket) ->
-    true = inet_db:register_socket(CliSocket, inet_tcp),
+%% listening socket to the new acceptor socket.
+set_sockopt(ListSock, AccSocket) ->
+    true = inet_db:register_socket(AccSocket, inet_tcp),
     case prim_inet:getopts(ListSock, [active, nodelay, keepalive, delay_send, priority, tos]) of
     {ok, Opts} ->
-        case prim_inet:setopts(CliSocket, Opts) of
-        ok    -> ok;
-        Error -> gen_tcp:close(CliSocket), Error
+        case prim_inet:setopts(AccSocket, Opts) of
+            ok    -> ok;
+            Error -> gen_tcp:close(AccSocket), Error
         end;
     Error ->
-        gen_tcp:close(CliSocket), Error
+        gen_tcp:close(AccSocket), Error
     end.
+
+%% For loopback communication and performance testing
+get_remote_node_ip(Node) when Node =:= node() ->
+    {127,0,0,1};
+get_remote_node_ip(Node) ->
+    {ok, NodeInfo} = net_kernel:node_info(Node),
+    {address, AddressInfo} = lists:keyfind(address, 1, NodeInfo),
+    {net_address, {Ip, _Port}, _Name, _Proto, _Channel} = AddressInfo,
+    Ip.

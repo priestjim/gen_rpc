@@ -26,7 +26,8 @@ start_link() ->
 %%% Supervisor callbacks
 %%% ===================================================
 init([]) ->
-    {ok, {{one_for_all, 0, 1}, [
+    {ok, {{one_for_one, 100, 1}, [
         {gen_rpc_receiver_sup, {gen_rpc_receiver_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_receiver_sup]},
+        {gen_rpc_acceptor_sup, {gen_rpc_acceptor_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_acceptor_sup]},
         {gen_rpc_sender_sup, {gen_rpc_sender_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_sender_sup]}
     ]}}.

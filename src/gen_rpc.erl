@@ -10,6 +10,9 @@
 %%% Behaviour
 -behaviour(application).
 
+%%% Used for debug printing messages when in test
+-include("include/debug.hrl").
+
 %%% Application callbacks
 -export([start/2, stop/1]).
 
@@ -28,14 +31,18 @@ stop(_State) ->
 %%% ===================================================
 %%% Library interface
 %%% ===================================================
-call(Node, M, F) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F) ->
-    call(Node, M, F, []).
+call(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
+    gen_rpc_sender:call(Node, M, F).
 
-call(Node, M, F, A) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F), is_atom(A) ->
-    {ok, Node, M, F, A}.
+call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+    gen_rpc_sender:call(Node, M, F, A).
 
-cast(Node, M, F) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F) ->
-    cast(Node, M, F, []).
+cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
+    gen_rpc_sender:cast(Node, M, F).
 
-cast(Node, M, F, A) when is_atom(Node), Node =/= node(), is_atom(M), is_atom(F), is_atom(A) ->
-    {ok, Node, M, F, A}.
+cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+    gen_rpc_sender:cast(Node, M, F, A).
+
+%%% ===================================================
+%%% Private functions
+%%% ===================================================

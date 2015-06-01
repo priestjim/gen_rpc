@@ -11,7 +11,7 @@
 -behaviour(supervisor).
 
 %%% Supervisor functions
--export([start_link/0]).
+-export([start_link/0, start_child/1]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -22,10 +22,13 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+start_child(Node) when is_atom(Node) ->
+    supervisor:start_child(?MODULE, [Node]).
+
 %%% ===================================================
 %%% Supervisor callbacks
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_send, {gen_rpc_send,start_link,[]}, transient, 5000, worker, [gen_rpc_send]}
+        {gen_rpc_sender, {gen_rpc_sender,start_link,[]}, transient, 5000, worker, [gen_rpc_sender]}
     ]}}.

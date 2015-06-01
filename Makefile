@@ -23,7 +23,7 @@
 
 .DEFAULT_GOAL := all
 
-.PHONY: all dist clean distclean testclean test ct dialyzer epmd rebar shell tags xref typer
+.PHONY: all compile dist clean distclean testclean test ct dialyzer epmd rebar shell tags xref typer
 
 # =============================================================================
 # verify that the programs we need to run are installed on this system
@@ -56,6 +56,8 @@ PROJ ?= $(notdir $(CURDIR))
 all: $(REBAR)
 	@$(REBAR) compile
 
+compile: all
+
 dist: all
 	@$(MAKE) test dialyzer
 
@@ -75,7 +77,7 @@ distclean: clean
 
 testclean:
 	@rm -fr _build/test
-	@find log/ct -maxdepth 1 -name ct_run* -type d -ctime +1 -exec rm -fr {} \;
+	@find log/ct -maxdepth 1 -name ct_run* -type d -cmin +360 -exec rm -fr {} \;
 
 # =============================================================================
 # Test targets
@@ -84,7 +86,7 @@ testclean:
 test: ct
 
 ct: epmd
-	@$(REBAR) ct
+	@$(REBAR) as test ct
 
 dialyzer:
 	@$(REBAR) dialyzer

@@ -10,8 +10,11 @@
 %%% Behaviour
 -behaviour(supervisor).
 
+%%% Used for debug printing messages when in test
+-include("include/debug.hrl").
+
 %%% Supervisor functions
--export([start_link/0]).
+-export([start_link/0, start_child/1]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -21,6 +24,12 @@
 %%% ===================================================
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+%% Launch a local receiver and return the port
+start_child(Node) ->
+    {ok, Pid} = supervisor:start_child(?MODULE, [Node]),
+    {ok, Port} = gen_rpc_receiver:get_port(Pid),
+    {ok, Port}.
 
 %%% ===================================================
 %%% Supervisor callbacks
