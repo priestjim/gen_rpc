@@ -17,7 +17,7 @@
         %% Client send timeout
         {send_timeout, 5000},
         %% Default receive timeout for call() functions
-        {receive_timeout, 5000},
+        {receive_timeout, 15000},
         %% Inactivity timeout for client gen_server
         {client_timeout, infinity},
         %% Inactivity timeout for server gen_server

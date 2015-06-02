@@ -21,7 +21,16 @@
 %%% ===================================================
 %%% CT callback functions
 %%% ===================================================
-all() -> [supervisor_black_box, call, call_with_receive_timeout, cast, receive_stale_data].
+all() ->
+    {exports, Functions} = lists:keyfind(exports, 1, ?MODULE:module_info()),
+    [FName || {FName, _} <- lists:filter(
+                               fun ({module_info,_}) -> false;
+                                   ({all,_}) -> false;
+                                   ({init_per_suite,1}) -> false;
+                                   ({end_per_suite,1}) -> false;
+                                   ({_,1}) -> true;
+                                   ({_,_}) -> false
+                               end, Functions)].
 
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
@@ -41,15 +50,13 @@ end_per_suite(_Config) ->
 %%% ===================================================
 %% Test supervisor's status
 supervisor_black_box(_Config) ->
+    ok = ct:pal("Testing [supervisor_black_box]"),
     true = erlang:is_process_alive(whereis(gen_rpc_receiver_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_sender_sup)),
     ok.
 
 %% Test main functions
-%% TODO:
-%% Make these functions timeout-adaptable, I don't have all day to wait
-%% for timer:sleep
 call(_Config) ->
     ok = ct:pal("Testing [call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
