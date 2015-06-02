@@ -11,28 +11,21 @@
 -include_lib("gen_rpc/include/ct.hrl").
 
 %%% Node definitions
--define(MASTER, 'gen_rpc_master@127.0.0.1').
--define(SLAVE, 'gen_rpc_slave@127.0.0.1').
--define(SLAVE_IP, '127.0.0.1').
--define(SLAVE_NAME, 'gen_rpc_slave').
+-define(NODE, 'gen_rpc_master@127.0.0.1').
 
 %%% Common Test callbacks
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 %%% Testing functions
--export([supervisor_black_box/1, call/1, cast/1, receive_timeout/1]).
+-export([supervisor_black_box/1, call/1, cast/1, receive_timeout/1, receive_stale_data/1]).
 
 %%% ===================================================
 %%% CT callback functions
 %%% ===================================================
-all() -> [supervisor_black_box, call, cast, receive_timeout].
-
-%% TODO: Combine master to slave and slave to master
-%% in groups so we can test full duplex communication
-%% to and fro a binary pair of nodes
+all() -> [supervisor_black_box, call, cast, receive_timeout, receive_stale_data].
 
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
-    {ok, _Pid} = net_kernel:start([?MASTER, longnames]),
+    {ok, _Pid} = net_kernel:start([?NODE, longnames]),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(gen_rpc),
     %% Setup application logging
@@ -53,11 +46,25 @@ supervisor_black_box(_Config) ->
     true = erlang:is_process_alive(whereis(gen_rpc_sender_sup)),
     ok.
 
+%% Test main functions
+%% TODO:
+%% Make these functions timeout-adaptable, I don't have all day to wait
+%% for timer:sleep
 call(_Config) ->
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp).
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
 
 cast(_Config) ->
-    ok = gen_rpc:cast(?MASTER, os, timestamp).
+    ok = gen_rpc:cast(?NODE, os, timestamp).
 
 receive_timeout(_Config) ->
-    {badtcp, receive_timeout} = gen_rpc:call(?MASTER, timer, sleep, [6000]).
+    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [5100]),
+    %% Sleep a bit to flush stale data for our next test
+    ok = timer:sleep(1000).
+
+receive_stale_data(_Config) ->
+    %% Step 1: Send data with a lengthy execution time
+    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [6000]),
+    %% Step 2: Send more data with a lengthy execution time
+    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [6000]),
+    %% Step 3: Send a quick function
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).

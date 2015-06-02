@@ -124,7 +124,7 @@ handle_call({call, _M, _F, _A} = PacketTuple, _From, #state{socket=Socket} = Sta
         {error, timeout} ->
             %% Terminate will handle closing the socket
             ?debug("Transmitting CALL term to socket [~p] failed with reason [timeout]", [Socket]),
-            {stop, {badtcp, send_timeout}, {badtcp, send_timeout}, State};
+            {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
         {error, OtherError} ->
             ?debug("Transmitting CALL term to socket [~p] failed with reason [~p]", [Socket, OtherError]),
             {stop, {badtcp,OtherError}, {badtcp,OtherError}, State};
