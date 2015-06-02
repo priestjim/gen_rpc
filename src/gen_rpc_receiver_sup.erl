@@ -27,6 +27,7 @@ start_link() ->
 
 %% Launch a local receiver and return the port
 start_child(Node) ->
+    ?debug("Starting new listener for remote node [~s]", [Node]),
     {ok, Pid} = supervisor:start_child(?MODULE, [Node]),
     {ok, Port} = gen_rpc_receiver:get_port(Pid),
     {ok, Port}.

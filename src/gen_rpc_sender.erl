@@ -104,7 +104,7 @@ init({Node}) ->
             case gen_tcp:connect(Address, Port, ?DEFAULT_TCP_OPTS, 5000) of %% TODO: Make timeout dynamic
                 {ok, Socket} ->
                     ?debug("Successfully connected to [~p:~B]", [Address, Port]),
-                    {ok, #state{socket = Socket}};
+                    {ok, #state{socket=Socket}};
                 {error, Reason} ->
                     ?debug("Connection to [~p] failed with reason [~p]", [Address, Reason]),
                     {stop, {badtcp, Reason}}
@@ -113,9 +113,10 @@ init({Node}) ->
             {stop, {badrpc, Reason}}
     end.
 
-handle_call({call, _M, _F, _A} = PacketTuple, _From, #state{socket = Socket} = State) ->
-    ?debug("Constructing CALL term to transmit to socket [~p]", [Socket]),
-    Packet = erlang:term_to_binary({node(), PacketTuple}),
+handle_call({call, _M, _F, _A} = PacketTuple, _From, #state{socket=Socket} = State) ->
+    Ref = erlang:make_ref(),
+    Packet = erlang:term_to_binary({node(), Ref, PacketTuple}),
+    ?debug("Constructing CALL term to transmit to socket [~p] with reference [~p]", [Socket, Ref]),
     %% If we fail, let it crash!
     ok = inet:setopts(Socket, [{active, once}, {send_timeout, 5000}]), %% TODO: Make timeout dynamic
     ?debug("Transmitting CALL term to socket [~p]", [Socket]),
@@ -126,16 +127,18 @@ handle_call({call, _M, _F, _A} = PacketTuple, _From, #state{socket = Socket} = S
             {stop, {badtcp, send_timeout}, {badtcp, send_timeout}, State};
         {error, OtherError} ->
             ?debug("Transmitting CALL term to socket [~p] failed with reason [~p]", [Socket, OtherError]),
-            {stop, {badtcp, OtherError}, {badtcp, OtherError}, State};
+            {stop, {badtcp,OtherError}, {badtcp,OtherError}, State};
         ok ->
-            ?debug("Request sent successfully for socket [~p]", [Socket]),
+            ?debug("CALL sent successfully for socket [~p]", [Socket]),
             %% TODO: Make receive timeout dynamic since
             %% this is essentially the same as the gen_server timeout
-            case wait_for_reply(Socket, 5000) of
+            case wait_for_reply(Socket, Ref, 5000) of
                 {ok, Response} ->
+                    ?debug("CALL with reference [~p] received successfully via socket [~p]", [Ref, Socket]),
                     {reply, Response, State};
-                {error, Error} ->
-                    {stop, {badtcp, Error}, {badtcp, Error}, State}
+                {error, Reason} ->
+                    ?debug("CALL with reference [~p] failed in socket [~p] with reason [~p]", [Ref, Socket, Reason]),
+                    {reply, {badtcp,Reason}, State}
             end
     end;
 
@@ -148,25 +151,49 @@ handle_call(_Message, _Caller, State) ->
     {stop, {error, unknown_message}, State}.
 
 %% Catch-all for casts
-handle_cast({cast, _M, _F, _A} = PacketTuple, #state{socket = Socket} = State) ->
+handle_cast({cast,_M,_F,_A} = PacketTuple, #state{socket=Socket} = State) ->
+    %% Cast requests do not need a reference
     Packet = erlang:term_to_binary({node(), PacketTuple}),
+    ?debug("Constructing CAST term to transmit to socket [~p].", [Socket]),
     %% If we fail, let it crash!
-    ok = gen_tcp:send(Socket, Packet),
-    {noreply, State};
+    case gen_tcp:send(Socket, Packet) of
+        {error, timeout} ->
+            %% Terminate will handle closing the socket
+            ?debug("Transmitting CAST term to socket [~p] failed with reason [timeout].", [Socket]),
+            {stop, {badtcp,send_timeout}, State};
+        {error, OtherError} ->
+            ?debug("Transmitting CAST term to socket [~p] failed with reason [~p].", [Socket, OtherError]),
+            {stop, {badtcp,OtherError}, State};
+        ok ->
+            ?debug("CAST sent successfully for socket [~p].", [Socket]),
+            {noreply, State}
+    end;
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(_Message, State) ->
     {stop, State}.
 
-%% Catch-all for info - die if we get a message we don't expect
+%% We've received a message from an RPC call that has timed out but
+%% still produced a result. Just drop the data for now.
+handle_info({tcp,Socket,_Data}, #state{socket=Socket} = State) ->
+    ?debug("Received unexpected data [~w] from socket [~p].", [_Data, Socket]),
+    {noreply, State};
+handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
+    ?debug("Socket [~p] closed the TCP channel. Stopping.", [Socket]),
+    {stop, normal, State};
+handle_info({tcp_error, Socket, _Reason}, #state{socket=Socket} = State) ->
+    ?debug("Socket [~p] caused error [~p] in the TCP channel. Stopping.", [Socket, _Reason]),
+    {stop, normal, State};
+
+%% Catch-all for info - ignore any message we don't care about
 handle_info(_Message, State) ->
-    {stop, State}.
+    {noreply, State}.
 
 %% Stub functions
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, #state{socket = Socket}) ->
+terminate(_Reason, #state{socket=Socket}) ->
     (catch gen_tcp:close(Socket)),
     ok.
 
@@ -188,10 +215,29 @@ get_remote_node_ip(Node) ->
 %% timeout when a node is dead closes the connection
 %% and contains logic on how to handle messages that come
 %% after a timeout has occurred
-wait_for_reply(Socket, Timeout) ->
+wait_for_reply(Socket, Ref, Timeout) ->
     receive
         {tcp, Socket, Data} ->
-            {ok, binary_to_term(Data)}
+            %% Process the request. If the response is a response
+            %% for a previous request that we timed out but eventually
+            %% came back while we were waiting for a different response
+            %% drop it an loop back
+            try erlang:binary_to_term(Data) of
+                {Ref, Result} ->
+                    ?debug("Received proper reply to CALL request with reference [~p] from socket [~p]", [Ref, Socket]),
+                    {ok, Result};
+                {_OtherRef, _Result} ->
+                    ?debug("Received stale reply to CALL request with reference [~p] from socket [~p]. Ignoring.", [_OtherRef, Socket]),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    wait_for_reply(Socket, Ref, Timeout);
+                _OtherData ->
+                    ?debug("Received erroneous reply from socket [~p] with payload [~p]. Ignoring.", [Socket, _OtherData]),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    wait_for_reply(Socket, Ref, Timeout)
+            catch
+                error:badarg ->
+                    {error, corrupt_data}
+            end
     after
         Timeout ->
             {error, receive_timeout}

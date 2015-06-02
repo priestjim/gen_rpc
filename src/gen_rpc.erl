@@ -31,6 +31,8 @@ stop(_State) ->
 %%% ===================================================
 %%% Library interface
 %%% ===================================================
+%% TODO:
+%% - Add timeout in functions and propagate appropriately
 call(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
     gen_rpc_sender:call(Node, M, F).
 
@@ -42,7 +44,3 @@ cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
 
 cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     gen_rpc_sender:cast(Node, M, F, A).
-
-%%% ===================================================
-%%% Private functions
-%%% ===================================================

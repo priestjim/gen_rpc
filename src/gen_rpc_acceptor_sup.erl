@@ -34,5 +34,5 @@ start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_acceptor, {gen_rpc_acceptor,start_link,[]}, permanent, 5000, worker, [gen_rpc_acceptor]}
+        {gen_rpc_acceptor, {gen_rpc_acceptor,start_link,[]}, transient, 5000, worker, [gen_rpc_acceptor]}
     ]}}.

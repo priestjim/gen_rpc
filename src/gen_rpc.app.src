@@ -5,6 +5,10 @@
     {mod, {gen_rpc, []}},
     {registered, [gen_rpc_sup, gen_rpc_receiver_sup, gen_rcp_send_sup]},
     {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
-    {env,[]},
+    {env,[
+        {connect_timeout, 5000},
+        {send_timeout, 5000},
+        {receive_timeout, 5000}
+    ]},
     {modules, []}]
 }.

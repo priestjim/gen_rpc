@@ -54,12 +54,12 @@ get_port(Pid) when is_pid(Pid) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Node}) ->
-    ?debug("Starting receiver for node [~s]", [Node]),
+    ?debug("Initializing listener for node [~s]", [Node]),
     process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
     case gen_tcp:listen(0, ?DEFAULT_TCP_OPTS) of
         {ok, Socket} ->
-            ?debug("Receiver for node [~s] started successfully", [Node]),
+            ?debug("Listener for node [~s] started successfully", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
             {ok, #state{client_ip = ClientIp,
                         client_node = Node,

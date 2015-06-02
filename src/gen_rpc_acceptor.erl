@@ -61,18 +61,13 @@ wait_for_socket({socket_ready, Socket},
     if
         ClientIp =/= Ip ->
             ?debug("Rejecting connection from client IP [~w] as it is different from [~w]", [Ip, ClientIp]),
-            {stop, {error, invalid_client_ip}, State};
+            {stop, {badtcp,invalid_client_ip}, State};
         true ->
             % Now we own the socket
             ?debug("Acquiring ownership for socket [~p] from client IP [~w]", [Socket, ClientIp]),
             ok = inet:setopts(Socket, [{active, once}, {packet, 4}, binary]),
             {next_state, wait_for_data, State#state{socket=Socket}}
-    end;
-
-wait_for_socket(Other, State) ->
-    error_logger:error_msg("State: wait_for_socket. Unexpected message: ~p\n", [Other]),
-    %% Allow to receive async messages
-    {next_state, wait_for_socket, State}.
+    end.
 
 %% Notification event coming from client
 wait_for_data({data, Data}, #state{socket=Socket, client_node = Node} = State) ->
@@ -80,11 +75,12 @@ wait_for_data({data, Data}, #state{socket=Socket, client_node = Node} = State) -
     %% the data
     ?debug("Received request from node [~s]. Processing.", [Node]),
     try erlang:binary_to_term(Data) of
-        {Node, {call, M, F, A}} ->
+        {Node, Ref, {call, M, F, A}} ->
             ?debug("Received CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
             Result = erlang:apply(M, F, A),
-            Packet = erlang:term_to_binary(Result),
-            case gen_tcp:send(Socket, Packet) of
+            Packet = {Ref, Result},
+            PacketBin = erlang:term_to_binary(Packet),
+            case gen_tcp:send(Socket, PacketBin) of
                 ok ->
                     ?debug("Replied to CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
                     ok = inet:setopts(Socket, [{active, once}]),
@@ -106,15 +102,7 @@ wait_for_data({data, Data}, #state{socket=Socket, client_node = Node} = State) -
     catch
         error:badarg ->
             {stop, {badtcp, corrupt_data}, State}
-    end;
-
-wait_for_data(timeout, State) ->
-    error_logger:error_msg("~p Client connection timeout - closing.\n", [self()]),
-    {stop, normal, State};
-
-wait_for_data(Data, State) ->
-    io:format("~p Ignoring data: ~p\n", [self(), Data]),
-    {next_state, wait_for_data, State}.
+    end.
 
 handle_event(Event, StateName, State) ->
     {stop, {StateName, undefined_event, Event}, State}.
@@ -127,20 +115,20 @@ handle_sync_event(Event, _From, StateName, State) ->
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Incoming data handlers
-handle_info({tcp, Socket, Dat}, wait_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
-    wait_for_data({data, Dat}, State);
+handle_info({tcp, Socket, Data}, wait_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
+    wait_for_data({data, Data}, State);
 
 handle_info({tcp_closed, Socket}, _StateName,
-            #state{client_ip= ClientIp, client_node = Node, socket=Socket} = State) ->
-    error_logger:info_msg("~p Client ~p with remote IP ~p and node name ~s disconnected.\n", [self(), Socket, ClientIp, Node]),
+            #state{client_ip=_ClientIp, client_node=_Node, socket=Socket} = State) ->
+    ?debug("Node [~s] with IP [~w] closed the TCP channel. Stopping.", [_Node, _ClientIp]),
     {stop, normal, State};
-handle_info({tcp_error, Socket, Reason}, _StateName,
-            #state{client_ip= ClientIp, client_node = Node, socket=Socket} = State) ->
-    error_logger:info_msg("~p Error while receiving from client ~p with remote IP ~p and node name ~s: ~p .\n", [self(), Socket, ClientIp, Node, Reason]),
+handle_info({tcp_error, Socket, _Reason}, _StateName,
+            #state{client_ip=_ClientIp, client_node=_Node, socket=Socket} = State) ->
+    ?debug("Node [~s] with IP [~w] caused error [~p] in the TCP channel. Stopping.", [_Node, _ClientIp, _Reason]),
     {stop, normal, State};
 
-handle_info(_Info, _StateName, State) ->
-    {stop, {error, unknown_message}, State}.
+handle_info(_Info, StateName, State) ->
+    {next_state, StateName, State}.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.

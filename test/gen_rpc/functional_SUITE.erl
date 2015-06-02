@@ -19,12 +19,12 @@
 %%% Common Test callbacks
 -export([all/0, init_per_suite/1, end_per_suite/1]).
 %%% Testing functions
--export([supervisor_black_box/1, call/1, cast/1, send_timeout/1]).
+-export([supervisor_black_box/1, call/1, cast/1, receive_timeout/1]).
 
 %%% ===================================================
 %%% CT callback functions
 %%% ===================================================
-all() -> [supervisor_black_box, call, cast, send_timeout].
+all() -> [supervisor_black_box, call, cast, receive_timeout].
 
 %% TODO: Combine master to slave and slave to master
 %% in groups so we can test full duplex communication
@@ -59,5 +59,5 @@ call(_Config) ->
 cast(_Config) ->
     ok = gen_rpc:cast(?MASTER, os, timestamp).
 
-send_timeout(_Config) ->
+receive_timeout(_Config) ->
     {badtcp, receive_timeout} = gen_rpc:call(?MASTER, timer, sleep, [6000]).
