@@ -1,7 +1,7 @@
 %%% -*-mode:erlang;coding:utf-8;tab-width:4;c-basic-offset:4;indent-tabs-mode:()-*-
 %%% ex: set ft=erlang fenc=utf-8 sts=4 ts=4 sw=4 et:
 %%%
-%%% Copyright 2015 Panagiotis Papadomitsos, Inc. All Rights Reserved.
+%%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
@@ -9,16 +9,20 @@
 -module(gen_rpc_acceptor).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
-%%% Debug printing messages
--include("include/debug.hrl").
-
 %%% Behaviour
 -behaviour(gen_fsm).
 
+%%% Include this library's name macro
+-include("include/app.hrl").
+%%% Used for debug printing messages when in test
+-include("include/debug.hrl").
+
 %% Local state
 -record(state, {socket = undefined :: port() | undefined,
-                client_ip :: tuple(),
-                client_node :: atom()}).
+        send_timeout :: non_neg_integer(),
+        inactivity_timeout :: non_neg_integer() | infinity,
+        client_ip :: tuple(),
+        client_node :: atom()}).
 
 %%% Server functions
 -export([start_link/2, set_socket/2, stop/1]).
@@ -49,10 +53,11 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({ClientIp, Node}) ->
-    ?debug("Initializing acceptor for node [~s] with IP [~w]", [Node, ClientIp]),
     process_flag(trap_exit, true),
+    ?debug("Initializing acceptor for node [~s] with IP [~w]", [Node, ClientIp]),
+    {ok, SendTO} = application:get_env(?APP, send_timeout),
     %% Store the client's IP and the node in our state
-    {ok, wait_for_socket, #state{client_ip = ClientIp, client_node = Node}}.
+    {ok, wait_for_socket, #state{client_ip=ClientIp,client_node=Node,send_timeout=SendTO}}.
 
 wait_for_socket({socket_ready, Socket},
                 #state{client_ip = ClientIp} = State) when is_port(Socket) ->
@@ -70,16 +75,17 @@ wait_for_socket({socket_ready, Socket},
     end.
 
 %% Notification event coming from client
-wait_for_data({data, Data}, #state{socket=Socket, client_node = Node} = State) ->
+wait_for_data({data, Data}, #state{socket=Socket,client_node=Node,send_timeout=SendTO} = State) ->
     %% The meat of the whole project: process a function call and return
     %% the data
-    ?debug("Received request from node [~s]. Processing.", [Node]),
+    ?debug("Received request from node [~s]. Processing!", [Node]),
     try erlang:binary_to_term(Data) of
         {Node, Ref, {call, M, F, A}} ->
             ?debug("Received CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
             Result = erlang:apply(M, F, A),
             Packet = {Ref, Result},
             PacketBin = erlang:term_to_binary(Packet),
+            ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
             case gen_tcp:send(Socket, PacketBin) of
                 ok ->
                     ?debug("Replied to CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
@@ -94,9 +100,8 @@ wait_for_data({data, Data}, #state{socket=Socket, client_node = Node} = State) -
             _Pid = erlang:spawn(M, F, A),
             ok = inet:setopts(Socket, [{active, once}]),
             {next_state, wait_for_data, State};
-        OtherData ->
-            ?debug("Received erroneous request from node [~s] with payload [~p]", [Node, OtherData]),
-            error_logger:error_msg("Bad data protocol data received: ~p", [OtherData]),
+        _OtherData ->
+            ?debug("Received erroneous request from node [~s] with payload [~p]", [Node, _OtherData]),
             ok = inet:setopts(Socket, [{active, once}]),
             {next_state, wait_for_data, State}
     catch

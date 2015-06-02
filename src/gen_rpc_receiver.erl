@@ -1,7 +1,7 @@
 %%% -*-mode:erlang;coding:utf-8;tab-width:4;c-basic-offset:4;indent-tabs-mode:()-*-
 %%% ex: set ft=erlang fenc=utf-8 sts=4 ts=4 sw=4 et:
 %%%
-%%% Copyright 2015 Panagiotis Papadomitsos, Inc. All Rights Reserved.
+%%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
@@ -17,13 +17,13 @@
 
 %%% Local state
 -record(state, {client_ip :: tuple(),
-                client_node :: atom(),
-                listener :: port(),
-                acceptor :: port()}).
+        client_node :: atom(),
+        listener :: port(),
+        acceptor :: port()}).
 
 %%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet, 4}, {reuseaddr, true},
-        {keepalive, true}, {backlog, 1024}, {active, false}]).
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4}, {reuseaddr,true}, {send_timeout_close,true},
+        {keepalive,true}, {backlog, 1024}, {active, false}]).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -113,12 +113,10 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         end
     catch
         exit:ExitReason ->
-            error_logger:error_msg("Error in async accept: ~p.\n", [ExitReason]),
             {stop, ExitReason, State}
     end;
 
 handle_info({inet_async, ListSock, Ref, Error}, #state{listener=ListSock, acceptor=Ref} = State) ->
-    error_logger:error_msg("Error in socket acceptor: ~p.\n", [Error]),
     {stop, Error, State};
 
 handle_info(_Info, State) ->
