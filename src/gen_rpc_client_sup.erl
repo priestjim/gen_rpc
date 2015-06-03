@@ -11,7 +11,7 @@
 -behaviour(supervisor).
 
 %%% Supervisor functions
--export([start_link/0, start_child/1]).
+-export([start_link/0, start_child/1, stop_child/1]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -23,7 +23,12 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_child(Node) when is_atom(Node) ->
+    ok = lager:debug("function=start_child event=starting_new_client server_node=\"~s\"", [Node]),
     supervisor:start_child(?MODULE, [Node]).
+
+stop_child(Pid) when is_pid(Pid) ->
+    ok = lager:debug("function=stop_child event=stopping_client client_pid=\"~p\"", [Pid]),
+    supervisor:terminate_child(?MODULE, Pid).
 
 %%% ===================================================
 %%% Supervisor callbacks

@@ -8,8 +8,17 @@
 -include_lib("common_test/include/ct.hrl").
 %%% Include this library's name macro
 -include("include/app.hrl").
+%%% Application setup
 -define(ctApplicationSetup(),
-    [application:set_env(Application, Key, Value) || {Application, Key, Value} <-
+    [application:set_env(Application, Key, Value, [{persistent, true}]) || {Application, Key, Value} <-
         [{sync, growl, none},
-        {sync, log, none}]]
+        {sync, log, none},
+        {sasl, errlog_type, error},
+        {sasl, error_logger_mf_dir, false},
+        {lager, colored, true},
+        {lager, handlers, [
+            {lager_console_backend, [info, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]},
+            {lager_common_test_backend, [error, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]}
+        ]}
+    ]]
 ).

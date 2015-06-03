@@ -10,9 +10,6 @@
 %%% Behaviour
 -behaviour(supervisor).
 
-%%% Used for debug printing messages when in test
--include("include/debug.hrl").
-
 %%% Supervisor functions
 -export([start_link/0, start_child/2, stop_child/1]).
 
@@ -26,11 +23,11 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
-    ?debug("Starting new acceptor for remote node [~s] with IP [~w]", [Node, ClientIp]),
+    ok = lager:debug("function=start_child event=starting_new_acceptor client_ip=\"~p\" client_node=\"~s\"", [ClientIp, Node]),
     supervisor:start_child(?MODULE, [ClientIp,Node]).
 
-stop_child(Pid) ->
-    ?debug("Terminating and unregistering acceptor with PID [~p]", [Pid]),
+stop_child(Pid) when is_pid(Pid) ->
+    ok = lager:debug("function=stop_child event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     supervisor:terminate_child(?MODULE, Pid).
 
 %%% ===================================================

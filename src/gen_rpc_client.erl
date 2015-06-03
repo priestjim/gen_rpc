@@ -14,8 +14,6 @@
 
 %%% Include this library's name macro
 -include("include/app.hrl").
-%%% Used for debug printing messages when in test
--include("include/debug.hrl").
 
 %%% Local state
 -record(state, {socket :: port(),
@@ -24,7 +22,7 @@
         inactivity_timeout :: non_neg_integer() | infinity}).
 
 %%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4}, {nodelay, true}, {send_timeout_close, true},
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4}, {nodelay,true}, {send_timeout_close,true},
                            {reuseaddr,true}, {keepalive,true}, {tos,4}, {active,false}]).
 
 %%% Supervisor functions
@@ -71,7 +69,7 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
                                          SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
     case whereis(Node) of
         undefined ->
-            ?debug("No sender process for CALL to node [~s] was found alive. Starting one!", [Node]),
+            ok = lager:info("function=call event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
             case gen_rpc_client_sup:start_child(Node) of
                 {ok, NewPid} ->
                     %% We take care of CALL inside the gen_server
@@ -82,7 +80,7 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
                     Reason
             end;
         Pid ->
-            ?debug("Using sender process [~p] for CALL to node [~s]!", [Pid, Node]),
+            ok = lager:debug("function=call event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
             gen_server:call(Pid, {{call,M,F,A},RecvTO,SendTO}, infinity)
     end.
 
@@ -102,7 +100,7 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     %% We'll never deplete atoms because all connected node names are already atoms in this VM
     case whereis(Node) of
         undefined ->
-            ?debug("No sender process for CALL to node [~s] was found alive. Starting one!", [Node]),
+            ok = lager:info("function=cast event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
             case gen_rpc_client_sup:start_child(Node) of
                 {ok, NewPid} ->
                     %% We take care of CALL inside the gen_server
@@ -113,7 +111,7 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
                     Reason
             end;
         Pid ->
-            ?debug("Using sender process [~p] for CAST to node [~s]!", [Pid, Node]),
+            ok = lager:debug("function=cast event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
             gen_server:cast(Pid, {{cast,M,F,A},SendTO})
     end.
 
@@ -134,22 +132,25 @@ init({Node}) ->
     %% Perform an in-band RPC call to the remote node
     %% asking it to launch a listener for us and return us
     %% the port that has been allocated for us
-    ?debug("Initializing connection to node [~s] with timeout values [connect:~B][send:~B][receive:~B][inactivity:~p]",
-           [Node, ConnTO, SendTO, RecvTO, TTL]),
+    ok = lager:info("function=init event=initializing_client server_node=\"~s\" connect_timeout=~B send_timeout=~B receive_timeout=~B inactivity_timeout=~p",
+                    [Node, ConnTO, SendTO, RecvTO, TTL]),
     case rpc:call(Node, gen_rpc_server_sup, start_child, [node()], ConnTO) of
         {ok, Port} ->
-            ?debug("Remote listener started successfully in port ~B", [Port]),
             %% Fetching the IP ourselves, since the remote node
             %% does not have a straightforward way of returning
             %% the proper remote IP
             Address = get_remote_node_ip(Node),
+            ok = lager:debug("function=init event=remote_server_started_successfully server_node=\"~s\" server_ip=\"~p:~B\"",
+                             [Node, Address, Port]),
             case gen_tcp:connect(Address, Port, ?DEFAULT_TCP_OPTS, ConnTO) of
                 {ok, Socket} ->
-                    ?debug("Successfully connected to [~p:~B]", [Address, Port]),
+                    ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=success",
+                                     [Node, Address, Port]),
                     {ok, #state{socket=Socket,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
                 {error, Reason} ->
-                    ?debug("Connection to [~p] failed with reason [~p]", [Address, Reason]),
-                    {stop, {badtcp, Reason}}
+                    ok = lager:error("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
+                                     [Node, Address, Port, Reason]),
+                    {stop, {badtcp,Reason}}
             end;
         {badrpc, Reason} ->
             {stop, {badrpc, Reason}}
@@ -160,90 +161,102 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, _From, #state{soc
     {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
     Ref = erlang:make_ref(),
     Packet = erlang:term_to_binary({node(), Ref, PacketTuple}),
-    ?debug("Constructing CALL term to transmit to socket [~p] with reference [~p]", [Socket, Ref]),
-    %% If we fail, let it crash!
+    ok = lager:debug("function=handle_call message=call event=constructing_call_term socket=\"~p\" call_reference=\"~p\"",
+                     [Socket, Ref]),
     ok = inet:setopts(Socket, [{active, once}, {send_timeout, SendTO}]),
-    ?debug("Transmitting CALL term to socket [~p]", [Socket]),
     case gen_tcp:send(Socket, Packet) of
         {error, timeout} ->
             %% Terminate will handle closing the socket
-            ?debug("Transmitting CALL term to socket [~p] failed with reason [timeout]", [Socket]),
+            ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"timeout\"",
+                             [Socket, Ref]),
             {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
-        {error, OtherError} ->
-            ?debug("Transmitting CALL term to socket [~p] failed with reason [~p]", [Socket, OtherError]),
-            {stop, {badtcp,OtherError}, {badtcp,OtherError}, State};
+        {error, Reason} ->
+            ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"~p\"",
+                             [Socket, Ref, Reason]),
+            {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
-            ?debug("CALL sent successfully for socket [~p]", [Socket]),
+            ok = lager:debug("function=handle_call message=call event=transmission_succeeded socket=\"~p\" call_reference=\"~p\"",
+                             [Socket, Ref]),
             case wait_for_reply(Socket, Ref, RecvTO) of
                 {ok, Response} ->
-                    ?debug("CALL with reference [~p] received successfully via socket [~p]", [Ref, Socket]),
+                    ok = lager:debug("function=handle_call message=call event=reply_received_successfully socket=\"~p\" call_reference=\"~p\" response=\"~p\"",
+                                     [Socket, Ref, Response]),
                     {reply, Response, State, State#state.inactivity_timeout};
-                {error, Reason} ->
-                    ?debug("CALL with reference [~p] failed in socket [~p] with reason [~p]", [Ref, Socket, Reason]),
-                    {reply, {badtcp,Reason}, State, State#state.inactivity_timeout}
+                {error, ReplyReason} ->
+                    ok = lager:notice("function=handle_call message=call event=failed_to_receive_reply socket=\"~p\" call_reference=\"~p\" reason=\"~p\"",
+                                      [Socket, Ref, ReplyReason]),
+                    {reply, {badrpc,ReplyReason}, State, State#state.inactivity_timeout}
             end
     end;
 
 %% Gracefully terminate
 handle_call(stop, _From, State) ->
+    ok = lager:debug("function=handle_call event=stopping_client socket=\"~p\"", [State#state.socket]),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
-handle_call(_Message, _Caller, State) ->
-    {stop, {error, unknown_message}, State}.
+handle_call(Msg, _Caller, State) ->
+    ok = lager:critical("function=handle_call event=uknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    {stop, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts
 handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = State) ->
     {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
     %% Cast requests do not need a reference
     Packet = erlang:term_to_binary({node(), PacketTuple}),
-    ?debug("Constructing CAST term to transmit to socket [~p]!", [Socket]),
+    ok = lager:debug("function=handle_cast message=cast event=constructing_cast_term socket=\"~p\"", [Socket]),
     %% Set the send timeout and do not run in active mode - we're a cast!
     ok = inet:setopts(Socket, [{active, false}, {send_timeout, SendTO}]),
     case gen_tcp:send(Socket, Packet) of
         {error, timeout} ->
             %% Terminate will handle closing the socket
-            ?debug("Transmitting CAST term to socket [~p] failed with reason [timeout]!", [Socket]),
+            ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
             {stop, {badtcp,send_timeout}, State};
-        {error, OtherError} ->
-            ?debug("Transmitting CAST term to socket [~p] failed with reason [~p]!", [Socket, OtherError]),
-            {stop, {badtcp,OtherError}, State};
+        {error, Reason} ->
+            ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+            {stop, {badtcp,Reason}, State};
         ok ->
-            ?debug("CAST sent successfully for socket [~p]!", [Socket]),
+            ok = lager:debug("function=handle_cast message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
             {noreply, State, State#state.inactivity_timeout}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
-handle_cast(_Message, State) ->
-    {stop, State}.
+handle_cast(Msg, State) ->
+    ok = lager:critical("function=handle_call event=uknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    {stop, {unknown_cast, Msg}, State}.
 
 %% We've received a message from an RPC call that has timed out but
 %% still produced a result. Just drop the data for now.
-handle_info({tcp,Socket,_Data}, #state{socket=Socket} = State) ->
-    ?debug("Received unexpected data [~w] from socket [~p]!", [_Data, Socket]),
+handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
+    ok = lager:notice("function=handle_info message=tcp event=stale_data_received socket=\"~p\" data=\"~p\"", [Socket, Data]),
     {noreply, State, State#state.inactivity_timeout};
+
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
-    ?debug("Socket [~p] closed the TCP channel. Stopping!", [Socket]),
-    {stop, normal, State};
-handle_info({tcp_error, Socket, _Reason}, #state{socket=Socket} = State) ->
-    ?debug("Socket [~p] caused error [~p] in the TCP channel. Stopping!", [Socket, _Reason]),
-    {stop, normal, State};
-%% Handle the inactivity timeout gracefully
-handle_info(timeout, State) ->
-    ?debug("Client timed-out because of inactivity. Exiting!"),
+    ok = lager:notice("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
     {stop, normal, State};
 
-%% Catch-all for info - ignore any message we don't care about
-handle_info(_Message, State) ->
-    {noreply, State, State#state.inactivity_timeout}.
+handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
+    ok = lager:notice("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
+    {stop, normal, State};
+
+%% Handle the inactivity timeout gracefully
+handle_info(timeout, State) ->
+    ok = lager:info("function=handle_info message=timeout event=client_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
+    {stop, normal, State};
+
+%% Catch-all for info - our protocol is strict so die!
+handle_info(Msg, State) ->
+    ok = lager:critical("function=handle_info event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    {stop, {unknown_info, Msg}, State}.
 
 %% Stub functions
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, #state{socket=Socket}) ->
-    ?debug("Client process for socket [~p] is exiting. Closing socket!", [Socket]),
+    ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
     (catch gen_tcp:close(Socket)),
+    _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
     ok.
 
 %%% ===================================================
@@ -256,7 +269,7 @@ get_remote_node_ip(Node) ->
     {ok, NodeInfo} = net_kernel:node_info(Node),
     {address, AddressInfo} = lists:keyfind(address, 1, NodeInfo),
     {net_address, {Ip, _Port}, _Name, _Proto, _Channel} = AddressInfo,
-    ?debug("Remote node address discovered to be [~p]", [Ip]),
+    ok = lager:debug("function=get_remote_node_ip node=\"~s\" ip_address=\"~p\"", [Node, Ip]),
     Ip.
 
 %% Wait for a reply
@@ -269,23 +282,27 @@ wait_for_reply(Socket, Ref, Timeout) ->
             %% drop it an loop back
             try erlang:binary_to_term(Data) of
                 {Ref, Result} ->
-                    ?debug("Received proper reply to CALL request with reference [~p] from socket [~p]", [Ref, Socket]),
+                    ok = lager:debug("function=wait_for_reply event=reply_received socket=\"~p\" call_reference=\"~p\" reply=\"~p\"",
+                                     [Socket, Ref, Result]),
                     {ok, Result};
-                {_OtherRef, _Result} ->
-                    ?debug("Received stale reply to CALL request with reference [~p] from socket [~p]. Ignoring!", [_OtherRef, Socket]),
+                {OtherRef, OtherResult} ->
+                    ok = lager:debug("function=wait_for_reply event=stale_reply_received socket=\"~p\" call_reference=\"~p\" received_reference=\"~p\" reply=\"~p\" action=ignoring",
+                                     [Socket, Ref, OtherRef, OtherResult]),
                     ok = inet:setopts(Socket, [{active, once}]),
                     wait_for_reply(Socket, Ref, Timeout);
-                _OtherData ->
-                    ?debug("Received erroneous reply from socket [~p] with payload [~p]. Ignoring!", [Socket, _OtherData]),
+                OtherData ->
+                    ok = lager:error("function=wait_for_reply event=erroneous_reply_received socket=\"~p\" call_reference=\"~p\" data=\"~p\" action=ignoring",
+                                     [Socket, Ref, OtherData]),
                     ok = inet:setopts(Socket, [{active, once}]),
                     wait_for_reply(Socket, Ref, Timeout)
             catch
                 error:badarg ->
+                    ok = lager:error("function=wait_for_reply event=corrupt_data_received socket=\"~p\" call_reference=\"~p\" action=returning_error", [Socket, Ref]),
                     {error, corrupt_data}
             end
     after
         Timeout ->
-            {error, receive_timeout}
+            {error, timeout}
     end.
 
 %% Merging user-define timeout values with state timeout values

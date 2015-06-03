@@ -10,7 +10,7 @@
     {registered, []},
     {mod, {gen_rpc, []}},
     {registered, [gen_rpc_sup, gen_rpc_server_sup, gen_rpc_client_sup, gen_rpc_acceptor_sup]},
-    {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
+    {applications, [kernel, stdlib, lager, sasl, crypto, asn1, public_key, ssl]},
     {env,[
         %% Client connect timeout
         {connect_timeout, 5000},

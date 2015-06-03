@@ -10,9 +10,6 @@
 %%% Behaviour
 -behaviour(application).
 
-%%% Used for debug printing messages when in test
--include("include/debug.hrl").
-
 %%% Application callbacks
 -export([start/2, stop/1]).
 

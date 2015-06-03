@@ -42,10 +42,10 @@ all() ->
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = net_kernel:start([?NODE, longnames]),
-    %% Starting the application locally
-    {ok, _MasterApps} = application:ensure_all_started(?APP),
     %% Setup application logging
     ?ctApplicationSetup(),
+    %% Starting the application locally
+    {ok, _MasterApps} = application:ensure_all_started(?APP),
     ok = ct:pal("Started [functional] suite with master node [~s]", [node()]),
     Config.
 
@@ -95,7 +95,7 @@ call(_Config) ->
 
 call_with_receive_timeout(_Config) ->
     ok = ct:pal("Testing [call_with_receive_timeout]"),
-    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [500], 1),
+    {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [500], 1),
     ok = timer:sleep(500).
 
 cast(_Config) ->
@@ -105,9 +105,9 @@ cast(_Config) ->
 receive_stale_data(_Config) ->
     ok = ct:pal("Testing [receive_stale_data]"),
     %% Step 1: Send data with a lengthy execution time
-    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
+    {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
     %% Step 2: Send more data with a lengthy execution time
-    {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
+    {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
     %% Step 3: Send a quick function
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
 
@@ -124,4 +124,5 @@ server_inactivity_timeout(_Config) ->
     ok = timer:sleep(600),
     %% Lookup the client named proces, shouldn't be there
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
+    %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).

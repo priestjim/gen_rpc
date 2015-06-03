@@ -14,8 +14,6 @@
 
 %%% Include this library's name macro
 -include("include/app.hrl").
-%%% Used for debug printing messages when in test
--include("include/debug.hrl").
 
 %% Local state
 -record(state, {socket = undefined :: port() | undefined,
@@ -54,23 +52,24 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% ===================================================
 init({ClientIp, Node}) ->
     process_flag(trap_exit, true),
-    ?debug("Initializing acceptor for node [~s] with IP [~w]", [Node, ClientIp]),
+    ok = lager:info("function=init client_node=\"~s\" client_ip=\"~p\"", [Node, ClientIp]),
     {ok, SendTO} = application:get_env(?APP, send_timeout),
     {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
     %% Store the client's IP and the node in our state
     {ok, waiting_for_socket, #state{client_ip=ClientIp,client_node=Node,send_timeout=SendTO,inactivity_timeout=TTL}}.
 
-waiting_for_socket({socket_ready, Socket},
-                #state{client_ip = ClientIp} = State) when is_port(Socket) ->
+waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) ->
     %% Filter the ports we're willing to accept connections from
     {ok, {Ip, _Port}} = inet:peername(Socket),
     if
         ClientIp =/= Ip ->
-            ?debug("Rejecting connection from client IP [~w] as it is different from [~w]", [Ip, ClientIp]),
+            ok = lager:notice("function=waiting_for_socket event=rejecting_unauthorized_connection socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
+                              [Socket, ClientIp, Ip]),
             {stop, {badtcp,invalid_client_ip}, State};
         true ->
             % Now we own the socket
-            ?debug("Acquiring ownership for socket [~p] from client IP [~w]", [Socket, ClientIp]),
+            ok = lager:debug("function=waiting_for_socket event=acquiring_socket_ownership socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
+                             [Socket, ClientIp, Ip]),
             ok = inet:setopts(Socket, [{active, once}, {packet, 4}, binary, {send_timeout, State#state.send_timeout}]),
             {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
@@ -79,76 +78,87 @@ waiting_for_socket({socket_ready, Socket},
 waiting_for_data({data, Data}, #state{socket=Socket,client_node=Node} = State) ->
     %% The meat of the whole project: process a function call and return
     %% the data
-    ?debug("Received request from node [~s]. Processing!", [Node]),
     try erlang:binary_to_term(Data) of
         {Node, Ref, {call, M, F, A}} ->
-            ?debug("Received CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
+            ok = lager:debug("function=waiting_for_data event=call_received socket=\"~p\" node=\"~s\" call_reference=\"~p\" module=~s function=~s args=\"~p\"",
+                             [Socket, Node, Ref, M, F, A]),
             %% Abomination
             Result = erlang:apply(M, F, A),
             Packet = {Ref, Result},
             PacketBin = erlang:term_to_binary(Packet),
             case gen_tcp:send(Socket, PacketBin) of
                 ok ->
-                    ?debug("Replied to CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
+                    ok = lager:debug("function=waiting_for_data event=call_reply_sent socket=\"~p\" node=\"~s\" call_reference=\"~p\" module=~s function=~s args=\"~p\"",
+                                     [Socket, Node, Ref, M, F, A]),
                     ok = inet:setopts(Socket, [{active, once}]),
                     {next_state, waiting_for_data, State, State#state.inactivity_timeout};
                 {error, Reason} ->
-                    ?debug("Failed to reply to CALL request from node [~s] with [M:~s][F:~s][A:~p] with reason [~w]", [Node, M, F, A, Reason]),
+                    ok = lager:error("function=waiting_for_data event=failed_to_send_call_reply socket=\"~p\" node=\"~s\" call_reference=\"~p\" reason=\"~p\"",
+                                     [Socket, Node, Ref, Reason]),
                     {stop, {badtcp, Reason}, State}
             end;
         {Node, {cast, M, F, A}} ->
-            ?debug("Received CAST request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
+            ok = lager:debug("function=waiting_for_data event=cast_received socket=\"~p\" node=\"~s\" module=~s function=~s args=\"~p\"",
+                             [Socket, Node, M, F, A]),
             _Pid = erlang:spawn(M, F, A),
             ok = inet:setopts(Socket, [{active, once}]),
             {next_state, waiting_for_data, State, State#state.inactivity_timeout};
-        _OtherData ->
-            ?debug("Received erroneous request from node [~s] with payload [~p]", [Node, _OtherData]),
-            ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, waiting_for_data, State, State#state.inactivity_timeout}
+        OtherData ->
+            ok = lager:debug("function=waiting_for_data event=erroneous_data_received socket=\"~p\" node=\"~s\" data=\"~p\"",
+                             [Socket, Node, OtherData]),
+            {stop, {badrpc, erroneous_data}, State}
     catch
         error:badarg ->
             {stop, {badtcp, corrupt_data}, State}
     end;
 %% Handle the inactivity timeout gracefully
 waiting_for_data(timeout, State) ->
-    ?debug("Acceptor timed-out because of inactivity. Exiting!"),
+    ok = lager:info("function=handle_info message=timeout event=server_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
     _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
     {stop, normal, State}.
 
 handle_event(Event, StateName, State) ->
+    ok = lager:critical("function=handle_event socket=\"~p\" event=uknown_event payload=\"~p\" action=stopping", [State#state.socket, Event]),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Gracefully terminate
 handle_sync_event(stop, _From, _StateName, State) ->
+    ok = lager:debug("function=handle_sync_event message=stop event=stopping_acceptor socket=\"~p\"", [State#state.socket]),
     {stop, normal, ok, State};
 
 handle_sync_event(Event, _From, StateName, State) ->
+    ok = lager:critical("function=handle_sync_event event=uknown_event socket=\"~p\" payload=\"~p\" action=stopping", [State#state.socket, Event]),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Incoming data handlers
 handle_info({tcp, Socket, Data}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
     waiting_for_data({data, Data}, State);
 
-handle_info({tcp_closed, Socket}, _StateName,
-            #state{client_ip=_ClientIp,client_node=_Node,socket=Socket} = State) ->
-    ?debug("Node [~s] with IP [~w] closed the TCP channel. Stopping.", [_Node, _ClientIp]),
+handle_info({tcp_closed, Socket}, _StateName, #state{client_node=Node,socket=Socket} = State) ->
+    ok = lager:notice("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" client_node=\"~s\" action=stopping",
+                      [Socket, Node]),
     {stop, normal, State};
-handle_info({tcp_error, Socket, _Reason}, _StateName,
-            #state{client_ip=_ClientIp,client_node=_Node,socket=Socket} = State) ->
-    ?debug("Node [~s] with IP [~w] caused error [~p] in the TCP channel. Stopping.", [_Node, _ClientIp, _Reason]),
+
+handle_info({tcp_error, Socket, Reason}, _StateName, #state{client_node=Node,socket=Socket} = State) ->
+    ok = lager:notice("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" client_node=\"~s\" reason=\"~p\" action=stopping",
+                      [Socket, Node, Reason]),
     {stop, normal, State};
-%% Catch-all for info - ignore any message we don't care about
-handle_info(_Info, StateName, State) ->
-    {next_state, StateName, StateName, State, State#state.inactivity_timeout}.
+
+%% Catch-all for info - our protocol is strict so die!
+handle_info(Msg, StateName, State) ->
+    ok = lager:critical("function=handle_info socket=\"~p\" event=uknown_event action=stopping", [State#state.socket]),
+    {stop, {StateName, unknown_message, Msg}, State}.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %% Terminate normally if we haven't received the socket yet
 terminate(_Reason, _StateName, #state{socket=undefined}) ->
+    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
     ok;
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
-    ?debug("Acceptor process for socket [~p] is exiting. Closing socket!", [Socket]),
+    ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
     (catch gen_tcp:close(Socket)),
+    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
     ok.

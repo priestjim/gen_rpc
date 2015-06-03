@@ -10,9 +10,6 @@
 %%% Behaviour
 -behaviour(supervisor).
 
-%%% Used for debug printing messages when in test
--include("include/debug.hrl").
-
 %%% Supervisor functions
 -export([start_link/0, start_child/1, stop_child/1]).
 
@@ -26,15 +23,15 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% Launch a local receiver and return the port
-start_child(Node) ->
-    ?debug("Starting new listener for remote node [~s]", [Node]),
+start_child(Node) when is_atom(Node) ->
+    ok = lager:debug("function=start_child event=starting_new_server client_node=\"~s\"", [Node]),
     {ok, Pid} = supervisor:start_child(?MODULE, [Node]),
     {ok, Port} = gen_rpc_server:get_port(Pid),
     {ok, Port}.
 
 %% Terminate and unregister a child server
-stop_child(Pid) ->
-    ?debug("Terminating and unregistering server with PID [~p]", [Pid]),
+stop_child(Pid) when is_pid(Pid) ->
+    ok = lager:debug("function=stop_child event=stopping_server server_pid=\"~p\"", [Pid]),
     supervisor:terminate_child(?MODULE, Pid).
 
 %%% ===================================================
