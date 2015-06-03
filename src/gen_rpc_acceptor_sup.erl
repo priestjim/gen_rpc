@@ -14,7 +14,7 @@
 -include("include/debug.hrl").
 
 %%% Supervisor functions
--export([start_link/0, start_child/2]).
+-export([start_link/0, start_child/2, stop_child/1]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -28,6 +28,10 @@ start_link() ->
 start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
     ?debug("Starting new acceptor for remote node [~s] with IP [~w]", [Node, ClientIp]),
     supervisor:start_child(?MODULE, [ClientIp,Node]).
+
+stop_child(Pid) ->
+    ?debug("Terminating and unregistering acceptor with PID [~p]", [Pid]),
+    supervisor:terminate_child(?MODULE, Pid).
 
 %%% ===================================================
 %%% Supervisor callbacks

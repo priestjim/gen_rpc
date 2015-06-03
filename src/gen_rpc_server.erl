@@ -6,7 +6,7 @@
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
 
--module(gen_rpc_receiver).
+-module(gen_rpc_server).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -19,6 +19,7 @@
 -record(state, {client_ip :: tuple(),
         client_node :: atom(),
         listener :: port(),
+        acceptor_pid :: pid(),
         acceptor :: port()}).
 
 %%% Default TCP options
@@ -97,6 +98,9 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         %% We do NOT want to link to the process, if it dies, it's the
         %% client's responsibility to reconnect
         {ok, AccPid} = gen_rpc_acceptor_sup:start_child(ClientIp, Node),
+        %% Link to acceptor, if they die so should we, since we a single-receiver
+        %% to single-acceptor service
+        true = erlang:link(AccPid),
         case set_sockopt(ListSock, AccSocket) of
             ok -> ok;
             {error, Reason} -> exit({set_sockopt, Reason})
@@ -108,7 +112,7 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         %% passive connections will remain open and leave us prone to
         %% a DoS file descriptor depletion attack
         case prim_inet:async_accept(ListSock, -1) of
-            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef}};
+            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}};
             {error, NewRef} -> exit({async_accept, inet:format_error(NewRef)})
         end
     catch
@@ -119,6 +123,11 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
 handle_info({inet_async, ListSock, Ref, Error}, #state{listener=ListSock, acceptor=Ref} = State) ->
     {stop, Error, State};
 
+%% Handle exit messages from our acceptor gracefully
+handle_info({'EXIT', AccPid, normal}, #state{listener=_Listener,acceptor_pid = AccPid} = State) ->
+    ?debug("Server received Acceptor exit for socket [~p]. Exiting!", [_Listener]),
+    {stop, normal, State};
+%% Catch-all for info - ignore any message we don't care about
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -127,7 +136,9 @@ handle_info(_Info, State) ->
 %% process. We shoudn't die when they die but they should die when we
 %% do.
 terminate(_Reason, #state{listener=Listener}) ->
+    ?debug("Server process for listener socket [~p] is exiting. Closing socket!", [Listener]),
     (catch gen_tcp:close(Listener)),
+    _Pid = erlang:spawn(gen_rpc_server_sup, stop_child, [self()]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

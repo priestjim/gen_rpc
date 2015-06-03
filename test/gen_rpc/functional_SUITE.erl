@@ -14,9 +14,16 @@
 -define(NODE, 'gen_rpc_master@127.0.0.1').
 
 %%% Common Test callbacks
--export([all/0, init_per_suite/1, end_per_suite/1]).
+-export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
+
 %%% Testing functions
--export([supervisor_black_box/1, call/1, call_with_receive_timeout/1, cast/1, receive_stale_data/1]).
+-export([supervisor_black_box/1,
+        call/1,
+        call_with_receive_timeout/1,
+        cast/1,
+        receive_stale_data/1,
+        client_inactivity_timeout/1,
+        server_inactivity_timeout/1]).
 
 %%% ===================================================
 %%% CT callback functions
@@ -36,7 +43,7 @@ init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = net_kernel:start([?NODE, longnames]),
     %% Starting the application locally
-    {ok, _MasterApps} = application:ensure_all_started(gen_rpc),
+    {ok, _MasterApps} = application:ensure_all_started(?APP),
     %% Setup application logging
     ?ctApplicationSetup(),
     ok = ct:pal("Started [functional] suite with master node [~s]", [node()]),
@@ -45,15 +52,40 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_testcase(client_inactivity_timeout, Config) ->
+    ok = restart_application(),
+    ok = application:set_env(?APP, client_inactivity_timeout, 500),
+    Config;
+init_per_testcase(server_inactivity_timeout, Config) ->
+    ok = restart_application(),
+    ok = application:set_env(?APP, server_inactivity_timeout, 500),
+    Config;
+init_per_testcase(_OtherTest, Config) ->
+    Config.
+
+end_per_testcase(client_inactivity_timeout, Config) ->
+    ok = restart_application(),
+    Config;
+end_per_testcase(server_inactivity_timeout, Config) ->
+    ok = restart_application(),
+    Config;
+end_per_testcase(_OtherTest, Config) ->
+    Config.
+
+restart_application() ->
+    ok = application:stop(?APP),
+    ok = application:unload(?APP),
+    ok = application:start(?APP).
+
 %%% ===================================================
 %%% Test cases
 %%% ===================================================
 %% Test supervisor's status
 supervisor_black_box(_Config) ->
     ok = ct:pal("Testing [supervisor_black_box]"),
-    true = erlang:is_process_alive(whereis(gen_rpc_receiver_sup)),
+    true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
-    true = erlang:is_process_alive(whereis(gen_rpc_sender_sup)),
+    true = erlang:is_process_alive(whereis(gen_rpc_client_sup)),
     ok.
 
 %% Test main functions
@@ -78,3 +110,18 @@ receive_stale_data(_Config) ->
     {badtcp, receive_timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
     %% Step 3: Send a quick function
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
+
+client_inactivity_timeout(_Config) ->
+    ok = ct:pal("Testing [client_inactivity_timeout]"),
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
+    ok = timer:sleep(600),
+    %% Lookup the client named proces, shouldn't be there
+    undefined = whereis(?NODE).
+
+server_inactivity_timeout(_Config) ->
+    ok = ct:pal("Testing [server_inactivity_timeout]"),
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
+    ok = timer:sleep(600),
+    %% Lookup the client named proces, shouldn't be there
+    [] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [] = supervisor:which_children(gen_rpc_server_sup).

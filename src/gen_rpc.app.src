@@ -9,19 +9,19 @@
     {vsn, "0.1.0"},
     {registered, []},
     {mod, {gen_rpc, []}},
-    {registered, [gen_rpc_sup, gen_rpc_receiver_sup, gen_rpc_sender_sup, gen_rpc_acceptor_sup]},
+    {registered, [gen_rpc_sup, gen_rpc_server_sup, gen_rpc_client_sup, gen_rpc_acceptor_sup]},
     {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
     {env,[
         %% Client connect timeout
         {connect_timeout, 5000},
-        %% Client send timeout
+        %% Client and Server send timeout
         {send_timeout, 5000},
         %% Default receive timeout for call() functions
         {receive_timeout, 15000},
         %% Inactivity timeout for client gen_server
-        {client_timeout, infinity},
+        {client_inactivity_timeout, infinity},
         %% Inactivity timeout for server gen_server
-        {server_timeout, infinity}
+        {server_inactivity_timeout, infinity}
     ]},
     {modules, []}]
 }.

@@ -27,7 +27,7 @@ start_link() ->
 %%% ===================================================
 init([]) ->
     {ok, {{one_for_one, 100, 1}, [
-        {gen_rpc_receiver_sup, {gen_rpc_receiver_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_receiver_sup]},
+        {gen_rpc_server_sup, {gen_rpc_server_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_server_sup]},
         {gen_rpc_acceptor_sup, {gen_rpc_acceptor_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_acceptor_sup]},
-        {gen_rpc_sender_sup, {gen_rpc_sender_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_sender_sup]}
+        {gen_rpc_client_sup, {gen_rpc_client_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_client_sup]}
     ]}}.

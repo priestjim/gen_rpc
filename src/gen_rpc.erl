@@ -34,22 +34,22 @@ stop(_State) ->
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
 call(Node, M, F) ->
-    gen_rpc_sender:call(Node, M, F).
+    gen_rpc_client:call(Node, M, F).
 
 call(Node, M, F, A) ->
-    gen_rpc_sender:call(Node, M, F, A).
+    gen_rpc_client:call(Node, M, F, A).
 
 call(Node, M, F, A, RecvTO) ->
-    gen_rpc_sender:call(Node, M, F, A, RecvTO).
+    gen_rpc_client:call(Node, M, F, A, RecvTO).
 
 call(Node, M, F, A, RecvTO, SendTO) ->
-    gen_rpc_sender:call(Node, M, F, A, RecvTO, SendTO).
+    gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
 cast(Node, M, F) ->
-    gen_rpc_sender:cast(Node, M, F).
+    gen_rpc_client:cast(Node, M, F).
 
 cast(Node, M, F, A) ->
-    gen_rpc_sender:cast(Node, M, F, A).
+    gen_rpc_client:cast(Node, M, F, A).
 
 cast(Node, M, F, A, SendTO) ->
-    gen_rpc_sender:cast(Node, M, F, A, SendTO).
+    gen_rpc_client:cast(Node, M, F, A, SendTO).

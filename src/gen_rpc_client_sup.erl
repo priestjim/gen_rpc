@@ -4,7 +4,7 @@
 %%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 
--module(gen_rpc_sender_sup).
+-module(gen_rpc_client_sup).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -30,5 +30,5 @@ start_child(Node) when is_atom(Node) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_sender, {gen_rpc_sender,start_link,[]}, transient, 5000, worker, [gen_rpc_sender]}
+        {gen_rpc_client, {gen_rpc_client,start_link,[]}, transient, 5000, worker, [gen_rpc_client]}
     ]}}.

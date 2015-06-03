@@ -6,7 +6,7 @@
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
 
--module(gen_rpc_sender).
+-module(gen_rpc_client).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -72,7 +72,7 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
     case whereis(Node) of
         undefined ->
             ?debug("No sender process for CALL to node [~s] was found alive. Starting one!", [Node]),
-            case gen_rpc_sender_sup:start_child(Node) of
+            case gen_rpc_client_sup:start_child(Node) of
                 {ok, NewPid} ->
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
@@ -103,7 +103,7 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     case whereis(Node) of
         undefined ->
             ?debug("No sender process for CALL to node [~s] was found alive. Starting one!", [Node]),
-            case gen_rpc_sender_sup:start_child(Node) of
+            case gen_rpc_client_sup:start_child(Node) of
                 {ok, NewPid} ->
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
@@ -130,12 +130,13 @@ init({Node}) ->
     {connect_timeout, ConnTO} = lists:keyfind(connect_timeout, 1, Settings),
     {send_timeout, SendTO} = lists:keyfind(send_timeout, 1, Settings),
     {receive_timeout, RecvTO} = lists:keyfind(receive_timeout, 1, Settings),
+    {client_inactivity_timeout, TTL} = lists:keyfind(client_inactivity_timeout, 1, Settings),
     %% Perform an in-band RPC call to the remote node
     %% asking it to launch a listener for us and return us
     %% the port that has been allocated for us
-    ?debug("Initializing connection to node [~s] with timeout values [connect:~B][send:~B][receive:~B]",
-           [Node, ConnTO, SendTO, RecvTO]),
-    case rpc:call(Node, gen_rpc_receiver_sup, start_child, [node()], ConnTO) of
+    ?debug("Initializing connection to node [~s] with timeout values [connect:~B][send:~B][receive:~B][inactivity:~p]",
+           [Node, ConnTO, SendTO, RecvTO, TTL]),
+    case rpc:call(Node, gen_rpc_server_sup, start_child, [node()], ConnTO) of
         {ok, Port} ->
             ?debug("Remote listener started successfully in port ~B", [Port]),
             %% Fetching the IP ourselves, since the remote node
@@ -145,7 +146,7 @@ init({Node}) ->
             case gen_tcp:connect(Address, Port, ?DEFAULT_TCP_OPTS, ConnTO) of
                 {ok, Socket} ->
                     ?debug("Successfully connected to [~p:~B]", [Address, Port]),
-                    {ok, #state{socket=Socket, send_timeout=SendTO, receive_timeout=RecvTO}};
+                    {ok, #state{socket=Socket,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
                 {error, Reason} ->
                     ?debug("Connection to [~p] failed with reason [~p]", [Address, Reason]),
                     {stop, {badtcp, Reason}}
@@ -155,8 +156,8 @@ init({Node}) ->
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, _From, #state{socket=Socket,receive_timeout=SRecvTO,send_timeout=SSendTO} = State) ->
-    {RecvTO, SendTO} = merge_timeout_values(SRecvTO, URecvTO, SSendTO, USendTO),
+handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, _From, #state{socket=Socket} = State) ->
+    {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
     Ref = erlang:make_ref(),
     Packet = erlang:term_to_binary({node(), Ref, PacketTuple}),
     ?debug("Constructing CALL term to transmit to socket [~p] with reference [~p]", [Socket, Ref]),
@@ -176,10 +177,10 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, _From, #state{soc
             case wait_for_reply(Socket, Ref, RecvTO) of
                 {ok, Response} ->
                     ?debug("CALL with reference [~p] received successfully via socket [~p]", [Ref, Socket]),
-                    {reply, Response, State};
+                    {reply, Response, State, State#state.inactivity_timeout};
                 {error, Reason} ->
                     ?debug("CALL with reference [~p] failed in socket [~p] with reason [~p]", [Ref, Socket, Reason]),
-                    {reply, {badtcp,Reason}, State}
+                    {reply, {badtcp,Reason}, State, State#state.inactivity_timeout}
             end
     end;
 
@@ -192,8 +193,8 @@ handle_call(_Message, _Caller, State) ->
     {stop, {error, unknown_message}, State}.
 
 %% Catch-all for casts
-handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket, send_timeout = SSendTO} = State) ->
-    {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, SSendTO, USendTO),
+handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = State) ->
+    {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
     %% Cast requests do not need a reference
     Packet = erlang:term_to_binary({node(), PacketTuple}),
     ?debug("Constructing CAST term to transmit to socket [~p]!", [Socket]),
@@ -209,7 +210,7 @@ handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket, send
             {stop, {badtcp,OtherError}, State};
         ok ->
             ?debug("CAST sent successfully for socket [~p]!", [Socket]),
-            {noreply, State}
+            {noreply, State, State#state.inactivity_timeout}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
@@ -220,23 +221,28 @@ handle_cast(_Message, State) ->
 %% still produced a result. Just drop the data for now.
 handle_info({tcp,Socket,_Data}, #state{socket=Socket} = State) ->
     ?debug("Received unexpected data [~w] from socket [~p]!", [_Data, Socket]),
-    {noreply, State};
+    {noreply, State, State#state.inactivity_timeout};
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
     ?debug("Socket [~p] closed the TCP channel. Stopping!", [Socket]),
     {stop, normal, State};
 handle_info({tcp_error, Socket, _Reason}, #state{socket=Socket} = State) ->
     ?debug("Socket [~p] caused error [~p] in the TCP channel. Stopping!", [Socket, _Reason]),
     {stop, normal, State};
+%% Handle the inactivity timeout gracefully
+handle_info(timeout, State) ->
+    ?debug("Client timed-out because of inactivity. Exiting!"),
+    {stop, normal, State};
 
 %% Catch-all for info - ignore any message we don't care about
 handle_info(_Message, State) ->
-    {noreply, State}.
+    {noreply, State, State#state.inactivity_timeout}.
 
 %% Stub functions
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, #state{socket=Socket}) ->
+    ?debug("Client process for socket [~p] is exiting. Closing socket!", [Socket]),
     (catch gen_tcp:close(Socket)),
     ok.
 

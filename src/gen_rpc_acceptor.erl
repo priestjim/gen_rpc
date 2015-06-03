@@ -32,7 +32,7 @@
         handle_info/3, terminate/3, code_change/4]).
 
 %% FSM States
--export([wait_for_socket/2, wait_for_data/2]).
+-export([waiting_for_socket/2, waiting_for_data/2]).
 
 %%% ===================================================
 %%% Supervisor functions
@@ -56,10 +56,11 @@ init({ClientIp, Node}) ->
     process_flag(trap_exit, true),
     ?debug("Initializing acceptor for node [~s] with IP [~w]", [Node, ClientIp]),
     {ok, SendTO} = application:get_env(?APP, send_timeout),
+    {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
     %% Store the client's IP and the node in our state
-    {ok, wait_for_socket, #state{client_ip=ClientIp,client_node=Node,send_timeout=SendTO}}.
+    {ok, waiting_for_socket, #state{client_ip=ClientIp,client_node=Node,send_timeout=SendTO,inactivity_timeout=TTL}}.
 
-wait_for_socket({socket_ready, Socket},
+waiting_for_socket({socket_ready, Socket},
                 #state{client_ip = ClientIp} = State) when is_port(Socket) ->
     %% Filter the ports we're willing to accept connections from
     {ok, {Ip, _Port}} = inet:peername(Socket),
@@ -70,27 +71,27 @@ wait_for_socket({socket_ready, Socket},
         true ->
             % Now we own the socket
             ?debug("Acquiring ownership for socket [~p] from client IP [~w]", [Socket, ClientIp]),
-            ok = inet:setopts(Socket, [{active, once}, {packet, 4}, binary]),
-            {next_state, wait_for_data, State#state{socket=Socket}}
+            ok = inet:setopts(Socket, [{active, once}, {packet, 4}, binary, {send_timeout, State#state.send_timeout}]),
+            {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
 
 %% Notification event coming from client
-wait_for_data({data, Data}, #state{socket=Socket,client_node=Node,send_timeout=SendTO} = State) ->
+waiting_for_data({data, Data}, #state{socket=Socket,client_node=Node} = State) ->
     %% The meat of the whole project: process a function call and return
     %% the data
     ?debug("Received request from node [~s]. Processing!", [Node]),
     try erlang:binary_to_term(Data) of
         {Node, Ref, {call, M, F, A}} ->
             ?debug("Received CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
+            %% Abomination
             Result = erlang:apply(M, F, A),
             Packet = {Ref, Result},
             PacketBin = erlang:term_to_binary(Packet),
-            ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
             case gen_tcp:send(Socket, PacketBin) of
                 ok ->
                     ?debug("Replied to CALL request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
                     ok = inet:setopts(Socket, [{active, once}]),
-                    {next_state, wait_for_data, State};
+                    {next_state, waiting_for_data, State, State#state.inactivity_timeout};
                 {error, Reason} ->
                     ?debug("Failed to reply to CALL request from node [~s] with [M:~s][F:~s][A:~p] with reason [~w]", [Node, M, F, A, Reason]),
                     {stop, {badtcp, Reason}, State}
@@ -99,15 +100,20 @@ wait_for_data({data, Data}, #state{socket=Socket,client_node=Node,send_timeout=S
             ?debug("Received CAST request from node [~s] with [M:~s][F:~s][A:~p].", [Node, M, F, A]),
             _Pid = erlang:spawn(M, F, A),
             ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, wait_for_data, State};
+            {next_state, waiting_for_data, State, State#state.inactivity_timeout};
         _OtherData ->
             ?debug("Received erroneous request from node [~s] with payload [~p]", [Node, _OtherData]),
             ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, wait_for_data, State}
+            {next_state, waiting_for_data, State, State#state.inactivity_timeout}
     catch
         error:badarg ->
             {stop, {badtcp, corrupt_data}, State}
-    end.
+    end;
+%% Handle the inactivity timeout gracefully
+waiting_for_data(timeout, State) ->
+    ?debug("Acceptor timed-out because of inactivity. Exiting!"),
+    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    {stop, normal, State}.
 
 handle_event(Event, StateName, State) ->
     {stop, {StateName, undefined_event, Event}, State}.
@@ -120,20 +126,20 @@ handle_sync_event(Event, _From, StateName, State) ->
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Incoming data handlers
-handle_info({tcp, Socket, Data}, wait_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
-    wait_for_data({data, Data}, State);
+handle_info({tcp, Socket, Data}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
+    waiting_for_data({data, Data}, State);
 
 handle_info({tcp_closed, Socket}, _StateName,
-            #state{client_ip=_ClientIp, client_node=_Node, socket=Socket} = State) ->
+            #state{client_ip=_ClientIp,client_node=_Node,socket=Socket} = State) ->
     ?debug("Node [~s] with IP [~w] closed the TCP channel. Stopping.", [_Node, _ClientIp]),
     {stop, normal, State};
 handle_info({tcp_error, Socket, _Reason}, _StateName,
-            #state{client_ip=_ClientIp, client_node=_Node, socket=Socket} = State) ->
+            #state{client_ip=_ClientIp,client_node=_Node,socket=Socket} = State) ->
     ?debug("Node [~s] with IP [~w] caused error [~p] in the TCP channel. Stopping.", [_Node, _ClientIp, _Reason]),
     {stop, normal, State};
-
+%% Catch-all for info - ignore any message we don't care about
 handle_info(_Info, StateName, State) ->
-    {next_state, StateName, State}.
+    {next_state, StateName, StateName, State, State#state.inactivity_timeout}.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
@@ -143,5 +149,6 @@ terminate(_Reason, _StateName, #state{socket=undefined}) ->
     ok;
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
+    ?debug("Acceptor process for socket [~p] is exiting. Closing socket!", [Socket]),
     (catch gen_tcp:close(Socket)),
     ok.
