@@ -17,7 +17,7 @@
         client_node :: atom(),
         socket :: port(),
         acceptor_pid :: pid(),
-        acceptor :: port()}).
+        acceptor :: non_neg_integer()}).
 
 %%% Default TCP options
 -define(DEFAULT_TCP_OPTS, [binary, {packet,4}, {reuseaddr,true}, {send_timeout_close,true},

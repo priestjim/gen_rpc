@@ -45,8 +45,12 @@ REBAR = $(CURDIR)/rebar3
 endif
 
 DIALYZER = dialyzer
-REBAR_URL=https://s3.amazonaws.com/rebar3/rebar3
-TYPER_OPTS=--annotate --annotate-inc-files -I ./include
+DIALYZER_OPTS = -Wno_return -Wno_unused -Wno_improper_lists -Wno_fun_app -Wno_match -Wno_opaque -Wno_fail_call -Wno_contracts -Wno_behaviours -Wno_undefined_callbacks -Wunmatched_returns -Werror_handling -Wrace_conditions -Woverspecs -Wunderspecs -Wspecdiffs
+DIALYZER_APPS = asn1 compiler common_test crypto edoc erts eunit inets kernel mnesia public_key ssl stdlib syntax_tools tools xmerl
+BASE_PLT = $(HOME)/.cache/rebar3/base.plt
+
+REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
+TYPER_OPTS = --annotate --annotate-inc-files -I ./include
 PROJ ?= $(notdir $(CURDIR))
 
 # =============================================================================
@@ -58,8 +62,7 @@ all: $(REBAR)
 
 compile: all
 
-dist: all
-	@$(MAKE) test dialyzer
+dist: all test dialyzer
 
 # =============================================================================
 # Clean targets
@@ -72,11 +75,10 @@ clean:
 # Full clean and removal of all build artifacts. Remove deps first to avoid
 # wasted effort of cleaning deps before nuking them.
 distclean: clean
-	@rm -rf _build log .rebar ebin/
+	@rm -rf _build log .rebar ebin/ $(PROJ).plt
 	@find . -name erl_crash.dump -type f -delete
 
 testclean:
-	@rm -fr _build/test
 	@find log/ct -maxdepth 1 -name ct_run* -type d -cmin +360 -exec rm -fr {} \;
 
 # =============================================================================
@@ -86,10 +88,11 @@ testclean:
 test: ct
 
 ct: epmd
-	@$(REBAR) as test ct
+	@$(REBAR) as test do ct
 
-dialyzer:
-	@$(REBAR) dialyzer
+dialyzer: $(BASE_PLT)
+	@$(REBAR) as test do dialyzer || true
+	@$(DIALYZER) $(DIALYZER_OPTS) --plts $(CURDIR)/$(PROJ).plt -r _build/test/lib/$(PROJ)/ebin
 
 # =============================================================================
 # Misc targets
@@ -105,6 +108,9 @@ $(REBAR):
 
 rebar: $(REBAR)
 
+$(BASE_PLT):
+	@$(DIALYZER) --build_plt --apps $(DIALYZER_APPS) --output_plt $(BASE_PLT);
+
 shell: epmd
 	@$(REBAR) shell
 
@@ -115,4 +121,4 @@ xref:
 	@$(REBAR) xref
 
 typer: dialyzer
-	@$(TYPER) $(TYPER_OPTS) --plt gen_rpc.plt -r src/
+	@$(TYPER) $(TYPER_OPTS) --plt $(PROJ).plt -r src/
