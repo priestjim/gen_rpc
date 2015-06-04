@@ -32,6 +32,9 @@
 %% FSM States
 -export([waiting_for_socket/2, waiting_for_data/2]).
 
+%%% Process exports
+-export([call_worker/6]).
+
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
@@ -79,24 +82,12 @@ waiting_for_data({data, Data}, #state{socket=Socket,client_node=Node} = State) -
     %% The meat of the whole project: process a function call and return
     %% the data
     try erlang:binary_to_term(Data) of
-        {Node, Ref, {call, M, F, A}} ->
-            ok = lager:debug("function=waiting_for_data event=call_received socket=\"~p\" node=\"~s\" call_reference=\"~p\" module=~s function=~s args=\"~p\"",
-                             [Socket, Node, Ref, M, F, A]),
-            %% Abomination
-            Result = erlang:apply(M, F, A),
-            Packet = {Ref, Result},
-            PacketBin = erlang:term_to_binary(Packet),
-            case gen_tcp:send(Socket, PacketBin) of
-                ok ->
-                    ok = lager:debug("function=waiting_for_data event=call_reply_sent socket=\"~p\" node=\"~s\" call_reference=\"~p\" module=~s function=~s args=\"~p\"",
-                                     [Socket, Node, Ref, M, F, A]),
-                    ok = inet:setopts(Socket, [{active, once}]),
-                    {next_state, waiting_for_data, State, State#state.inactivity_timeout};
-                {error, Reason} ->
-                    ok = lager:error("function=waiting_for_data event=failed_to_send_call_reply socket=\"~p\" node=\"~s\" call_reference=\"~p\" reason=\"~p\"",
-                                     [Socket, Node, Ref, Reason]),
-                    {stop, {badtcp, Reason}, State}
-            end;
+        {Node, ClientPid, Ref, {call, M, F, A}} ->
+            WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), ClientPid, Ref, M, F, A]),
+            ok = lager:debug("function=waiting_for_data event=call_received socket=\"~p\" node=\"~s\" call_reference=\"~p\" client_pid=\"~p\" worker_pid=\"~p\"",
+                             [Socket, Node, Ref, ClientPid, WorkerPid]),
+            ok = inet:setopts(Socket, [{active, once}]),
+            {next_state, waiting_for_data, State, State#state.inactivity_timeout};
         {Node, {cast, M, F, A}} ->
             ok = lager:debug("function=waiting_for_data event=cast_received socket=\"~p\" node=\"~s\" module=~s function=~s args=\"~p\"",
                              [Socket, Node, M, F, A]),
@@ -144,6 +135,18 @@ handle_info({tcp_error, Socket, Reason}, _StateName, #state{client_node=Node,soc
                       [Socket, Node, Reason]),
     {stop, normal, State};
 
+%% Handle a call worker message
+handle_info({call_reply, PacketBin}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
+    ok = lager:debug("function=handle_info message=call_reply event=call_reply_received socket=\"~p\"", [Socket]),
+    case gen_tcp:send(Socket, PacketBin) of
+        ok ->
+            ok = lager:debug("function=handle_info message=call_reply event=call_reply_sent socket=\"~p\"", [Socket]),
+            {next_state, waiting_for_data, State, State#state.inactivity_timeout};
+        {error, Reason} ->
+            ok = lager:error("function=handle_info message=call_reply event=failed_to_send_call_reply socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+            {stop, {badtcp, Reason}, State}
+    end;
+
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, StateName, State) ->
     ok = lager:critical("function=handle_info socket=\"~p\" event=uknown_event action=stopping", [State#state.socket]),
@@ -162,3 +165,14 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
     (catch gen_tcp:close(Socket)),
     _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
     ok.
+
+%%% ===================================================
+%%% Private functions
+%%% ===================================================
+%% Process an RPC call request outside of the FSM
+call_worker(Parent, WorkerPid, Ref, M, F, A) ->
+    ok = lager:debug("function=call_worker event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),
+    Result = erlang:apply(M, F, A),
+    PacketBin = erlang:term_to_binary({WorkerPid, Ref, Result}),
+    Parent ! {call_reply, PacketBin},
+    exit(normal).

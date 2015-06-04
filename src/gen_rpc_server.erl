@@ -129,10 +129,10 @@ handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=
     {stop, Error, State};
 
 %% Handle exit messages from our acceptor gracefully
-handle_info({'EXIT', AccPid, normal}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
-    ok = lager:notice("function=handle_info message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" action=stopping",
-                    [Socket, AccPid]),
-    {stop, normal, State};
+handle_info({'EXIT', AccPid, Reason}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
+    ok = lager:notice("function=handle_info message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
+                    [Socket, AccPid, Reason]),
+    {stop, Reason, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->

@@ -20,10 +20,13 @@
 -export([supervisor_black_box/1,
         call/1,
         call_with_receive_timeout/1,
+        interleaved_call/1,
         cast/1,
-        receive_stale_data/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1]).
+
+%%% Auxiliary functions for test cases
+-export([interleaved_call_proc/3, interleaved_call_executor/1]).
 
 %%% ===================================================
 %%% CT callback functions
@@ -35,6 +38,8 @@ all() ->
                                    ({all,_}) -> false;
                                    ({init_per_suite,1}) -> false;
                                    ({end_per_suite,1}) -> false;
+                                   ({interleaved_call_proc,3}) -> false;
+                                   ({interleaved_call_executor,1}) -> false;
                                    ({_,1}) -> true;
                                    ({_,_}) -> false
                                end, Functions)].
@@ -98,18 +103,22 @@ call_with_receive_timeout(_Config) ->
     {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [500], 1),
     ok = timer:sleep(500).
 
+interleaved_call(_Config) ->
+    ct:pal("Testing [interleaved_call]"),
+    %% Spawn 3 consecutive processes that execute gen_rpc:call
+    %% to the remote node and wait an inversely proportionate time
+    %% for their result (effectively rendering the results out of order)
+    %% in order to test proper data interleaving
+    Pid1 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 1, infinity]),
+    Pid2 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 2, 10]),
+    Pid3 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 3, infinity]),
+    ok = interleaved_call_loop(Pid1, Pid2, Pid3, 0),
+    ok.
+
 cast(_Config) ->
     ct:pal("Testing [cast]"),
     ok = gen_rpc:cast(?NODE, os, timestamp).
 
-receive_stale_data(_Config) ->
-    ok = ct:pal("Testing [receive_stale_data]"),
-    %% Step 1: Send data with a lengthy execution time
-    {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
-    %% Step 2: Send more data with a lengthy execution time
-    {badrpc, timeout} = gen_rpc:call(?NODE, timer, sleep, [1000], 500),
-    %% Step 3: Send a quick function
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
@@ -126,3 +135,44 @@ server_inactivity_timeout(_Config) ->
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).
+
+%%% ===================================================
+%%% Auxiliary functions for test cases
+%%% ===================================================
+%% Loop in order to receive all messages from all workers
+interleaved_call_loop(Pid1, Pid2, Pid3, Num) when Num < 3 ->
+    receive
+        {reply, Pid1, 1, 1} ->
+            ct:pal("Received proper reply from Worker 1"),
+            interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
+        {reply, Pid2, 2, {badrpc, timeout}} ->
+            ct:pal("Received proper reply from Worker 2"),
+            interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
+        {reply, Pid3, 3, 3} ->
+            ct:pal("Received proper reply from Worker 3"),
+            interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
+        _Else ->
+            ct:pal("Received out of order reply"),
+            fail
+    end;
+interleaved_call_loop(_, _, _, 3) ->
+    ok.
+
+%% This function will become a spawned process that performs the RPC
+%% call and then returns the value of the RPC call
+%% We spawn it in order to achieve parallelism and test out-of-order
+%% execution of multiple RPC calls
+interleaved_call_proc(Caller, Num, Timeout) ->
+    Result = gen_rpc:call(?NODE, ?MODULE, interleaved_call_executor, [Num], Timeout),
+    Caller ! {reply, self(), Num, Result},
+    ok.
+
+%% This is the function that gets executed in the "remote"
+%% node, sleeping 3 minus $Num seconds and returning the number
+%% effectively returning a number thats inversely proportional
+%% to the number of seconds the worker slept
+interleaved_call_executor(Num) when is_integer(Num) ->
+    %% Sleep for 3 - Num
+    ok = timer:sleep((3 - Num) * 1000),
+    %% Then return the number
+    Num.
