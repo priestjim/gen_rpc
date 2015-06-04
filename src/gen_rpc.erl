@@ -10,8 +10,14 @@
 %%% Behaviour
 -behaviour(application).
 
+%%% Include this library's name macro
+-include("include/app.hrl").
+
 %%% Application callbacks
 -export([start/2, stop/1]).
+
+%%% Development start/stop functions
+-export([start/0, stop/0]).
 
 %%% Library interface
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5]).
@@ -24,6 +30,15 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+%%% ===================================================
+%%% Application callbacks
+%%% ===================================================
+start() ->
+    application:start(?APP).
+
+stop() ->
+    application:stop(?APP).
 
 %%% ===================================================
 %%% Library interface
