@@ -104,7 +104,7 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     case whereis(Node) of
         undefined ->
             ok = lager:info("function=cast event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
-            case gen_rpc_client_sup:start_child(Node) of
+            case gen_rpc_dispatcher:start_client(Node) of
                 {ok, NewPid} ->
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
