@@ -27,8 +27,8 @@ start_link() ->
 %%% ===================================================
 init([]) ->
     {ok, {{one_for_one, 100, 1}, [
-        {gen_rpc_dispatcher, {gen_rpc_dispatcher,start_link, []}, permanent, 5000, worker, [gen_rpc_dispatcher]},
         {gen_rpc_server_sup, {gen_rpc_server_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_server_sup]},
         {gen_rpc_acceptor_sup, {gen_rpc_acceptor_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_acceptor_sup]},
+        {gen_rpc_dispatcher, {gen_rpc_dispatcher,start_link, []}, permanent, 5000, worker, [gen_rpc_dispatcher]},
         {gen_rpc_client_sup, {gen_rpc_client_sup,start_link, []}, permanent, 5000, supervisor, [gen_rpc_client_sup]}
     ]}}.

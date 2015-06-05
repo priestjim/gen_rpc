@@ -41,7 +41,7 @@ start_client(Node) when is_atom(Node) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init([]) ->
-    ok = lager:notice("function=init"),
+    ok = lager:info("function=init"),
     process_flag(trap_exit, true),
     {ok, no_state}.
 
@@ -80,6 +80,6 @@ handle_info(Msg, no_state) ->
 code_change(_OldVersion, no_state, _Extra) ->
     {ok, no_state}.
 
-terminate(Reason, _State) ->
+terminate(Reason, no_state) ->
     ok = lager:debug("function=terminate reason=\"~512tp\"", [Reason]),
     ok.
