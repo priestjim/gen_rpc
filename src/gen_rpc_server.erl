@@ -19,9 +19,15 @@
         acceptor_pid :: pid(),
         acceptor :: non_neg_integer()}).
 
-%%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4}, {reuseaddr,true}, {send_timeout_close,true},
-        {keepalive,true}, {backlog, 1024}, {active, false}]).
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+        {nodelay,true}, % Send our requests immediately
+        {send_timeout_close,true}, % When the socket times out, close the connection
+        {delay_send,true}, % Scheduler should favor big batch requests
+        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
+        {reuseaddr,true}, % Reuse local port numbers
+        {keepalive,true}, % Keep our channel open
+        {tos,72}, % Deliver immediately
+        {active,false}]). % Retrieve data from socket upon request
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -156,7 +162,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% listening socket to the new acceptor socket.
 set_sockopt(ListSock, AccSocket) ->
     true = inet_db:register_socket(AccSocket, inet_tcp),
-    case prim_inet:getopts(ListSock, [active, nodelay, keepalive, delay_send, priority, tos]) of
+    case prim_inet:getopts(ListSock, [nodelay, send_timeout_close, delay_send, linger, reuseaddr, keepalive, tos, active]) of
         {ok, Opts} ->
             case prim_inet:setopts(AccSocket, Opts) of
                 ok    -> ok;
