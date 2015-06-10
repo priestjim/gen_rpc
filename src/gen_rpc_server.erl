@@ -43,7 +43,8 @@
 %%% Supervisor functions
 %%% ===================================================
 start_link(Node) when is_atom(Node) ->
-    gen_server:start_link(?MODULE, {Node}, []).
+    Name = make_process_name(Node),
+    gen_server:start_link({local,Name}, ?MODULE, {Node}, []).
 
 stop(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, stop).
@@ -158,6 +159,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+make_process_name(Node) ->
+    NodeBin = atom_to_binary(Node, latin1),
+    binary_to_atom(<<"gen_rpc_server_", NodeBin/binary>>, latin1).
+
 %% Taken from prim_inet.  We are merely copying some socket options from the
 %% listening socket to the new acceptor socket.
 set_sockopt(ListSock, AccSocket) ->

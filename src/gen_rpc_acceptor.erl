@@ -39,7 +39,8 @@
 %%% Supervisor functions
 %%% ===================================================
 start_link(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
-    gen_fsm:start_link(?MODULE, {ClientIp, Node}, []).
+    Name = make_process_name(Node),
+    gen_fsm:start_link({local,Name}, ?MODULE, {ClientIp, Node}, []).
 
 stop(Pid) when is_pid(Pid) ->
      gen_fsm:sync_send_all_state_event(Pid, stop).
@@ -169,6 +170,10 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+make_process_name(Node) ->
+    NodeBin = atom_to_binary(Node, latin1),
+    binary_to_atom(<<"gen_rpc_acceptor_", NodeBin/binary>>, latin1).
+
 %% Process an RPC call request outside of the FSM
 call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     ok = lager:debug("function=call_worker event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),
