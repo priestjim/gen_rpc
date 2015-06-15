@@ -51,7 +51,7 @@
 start_link(Node) when is_atom(Node) ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:
     %% We'll never deplete atoms because all connected node names are already atoms in this VM
-    gen_server:start_link({local,Node}, ?MODULE, {Node}, []).
+    gen_server:start_link({local,Node}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
 
 stop(Node) when is_atom(Node) ->
     gen_server:call(Node, stop).
@@ -231,7 +231,7 @@ handle_cast(Msg, State) ->
 
 %% Handle any TCP packet coming in
 handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
-    try erlang:binary_to_term(Data) of
+    _Reply = try erlang:binary_to_term(Data) of
         {WorkerPid, Ref, Reply} ->
             case erlang:is_process_alive(WorkerPid) of
                 true ->
@@ -301,7 +301,8 @@ call_worker(Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
             ok = lager:debug("function=call_worker event=reply_received call_reference=\"~p\" reply=\"~p\"",
                              [Ref, Reply]),
             _Ign = gen_server:reply(Caller, Reply),
-            exit(normal);
+            exit(normal),
+            ok;
         Else ->
             ok = lager:error("function=call_worker event=invalid_message_received call_reference=\"~p\" message=\"~p\"",
                              [Ref, Else]),

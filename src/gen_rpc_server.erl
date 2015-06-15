@@ -44,7 +44,7 @@
 %%% ===================================================
 start_link(Node) when is_atom(Node) ->
     Name = make_process_name(Node),
-    gen_server:start_link({local,Name}, ?MODULE, {Node}, []).
+    gen_server:start_link({local,Name}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
 
 stop(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, stop).

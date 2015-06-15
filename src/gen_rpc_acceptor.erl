@@ -40,7 +40,7 @@
 %%% ===================================================
 start_link(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
     Name = make_process_name(Node),
-    gen_fsm:start_link({local,Name}, ?MODULE, {ClientIp, Node}, []).
+    gen_fsm:start_link({local,Name}, ?MODULE, {ClientIp, Node}, [{spawn_opt, [{priority, high}]}]).
 
 stop(Pid) when is_pid(Pid) ->
      gen_fsm:sync_send_all_state_event(Pid, stop).
@@ -180,4 +180,5 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     Result = erlang:apply(M, F, A),
     PacketBin = erlang:term_to_binary({WorkerPid, Ref, Result}),
     Parent ! {call_reply, PacketBin},
-    exit(normal).
+    exit(normal),
+    ok.
