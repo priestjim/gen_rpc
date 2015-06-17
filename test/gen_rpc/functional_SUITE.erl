@@ -12,6 +12,9 @@
 
 %%% Node definitions
 -define(NODE, 'gen_rpc_master@127.0.0.1').
+-define(SLAVE, 'gen_rpc_slave@127.0.0.1').
+-define(SLAVE_IP, '127.0.0.1').
+-define(SLAVE_NAME, 'gen_rpc_slave').
 
 %%% Common Test callbacks
 -export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
@@ -23,7 +26,8 @@
         interleaved_call/1,
         cast/1,
         client_inactivity_timeout/1,
-        server_inactivity_timeout/1]).
+        server_inactivity_timeout/1,
+        remote_node_call/1]).
 
 %%% Auxiliary functions for test cases
 -export([interleaved_call_proc/3, interleaved_call_executor/1]).
@@ -65,6 +69,13 @@ init_per_testcase(server_inactivity_timeout, Config) ->
     ok = restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
+init_per_testcase(remote_node_call, Config) ->
+    %% Starting a slave node with Distributed Erlang
+    {ok, _Slave} = slave:start(?SLAVE_IP, ?SLAVE_NAME, "+K true"),
+    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
+    %% Start the application remotely
+    {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [gen_rpc]),
+    Config;
 init_per_testcase(_OtherTest, Config) ->
     Config.
 
@@ -73,6 +84,9 @@ end_per_testcase(client_inactivity_timeout, Config) ->
     Config;
 end_per_testcase(server_inactivity_timeout, Config) ->
     ok = restart_application(),
+    Config;
+end_per_testcase(remote_node_call, Config) ->
+    ok = slave:stop(?SLAVE),
     Config;
 end_per_testcase(_OtherTest, Config) ->
     Config.
@@ -135,6 +149,10 @@ server_inactivity_timeout(_Config) ->
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).
+
+remote_node_call(_Config) ->
+    ok = ct:pal("Testing [remote_node_call]"),
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
