@@ -198,6 +198,8 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                     {noreply, State, State#state.inactivity_timeout}
             end;
         Else when Else =:= false; Else =:= ignored ->
+            ok = lager:error("function=handle_call message=call event=node_down socket=\"~p\" call_reference=\"~p\"",
+                             [Socket, Ref]),
             {stop, {badrpc,nodedown}, State}
     end;
 
@@ -236,6 +238,7 @@ handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket,node=
                     {noreply, State, State#state.inactivity_timeout}
             end;
         Else when Else =:= false; Else =:= ignored ->
+            ok = lager:error("function=handle_call message=call event=node_down socket=\"~p\" call_reference=\"~p\"", [Socket]),
             {stop, {badrpc,nodedown}, State}
     end;
 
