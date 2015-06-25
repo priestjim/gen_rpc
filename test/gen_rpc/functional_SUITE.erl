@@ -133,7 +133,6 @@ cast(_Config) ->
     ct:pal("Testing [cast]"),
     ok = gen_rpc:cast(?NODE, os, timestamp).
 
-
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
