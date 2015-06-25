@@ -17,6 +17,7 @@
 
 %%% Local state
 -record(state, {socket :: port(),
+        node :: atom(),
         send_timeout :: non_neg_integer(),
         receive_timeout :: non_neg_integer(),
         inactivity_timeout :: non_neg_integer() | infinity}).
@@ -154,7 +155,7 @@ init({Node}) ->
                 {ok, Socket} ->
                     ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
                                      [Node, Address, Port]),
-                    {ok, #state{socket=Socket,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
+                    {ok, #state{socket=Socket,node=Node,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
                 {error, Reason} ->
                     ok = lager:error("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
                                      [Node, Address, Port, Reason]),
@@ -165,7 +166,7 @@ init({Node}) ->
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket} = State) ->
+handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket,node=Node} = State) ->
     {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
     Ref = erlang:make_ref(),
     %% Spawn the worker that will wait for the server's reply
@@ -175,22 +176,29 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
     ok = lager:debug("function=handle_call message=call event=constructing_call_term socket=\"~p\" call_reference=\"~p\"",
                      [Socket, Ref]),
     ok = inet:setopts(Socket, [{active, once}, {send_timeout, SendTO}]),
-    case gen_tcp:send(Socket, Packet) of
-        {error, timeout} ->
-            ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"timeout\"",
-                             [Socket, Ref]),
-            %% Reply will be handled from the worker
-            {stop, {badtcp,send_timeout}, State};
-        {error, Reason} ->
-            ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"~p\"",
-                             [Socket, Ref, Reason]),
-            %% Reply will be handled from the worker
-            {stop, {badtcp,Reason}, State};
-        ok ->
-            ok = lager:debug("function=handle_call message=call event=transmission_succeeded socket=\"~p\" call_reference=\"~p\"",
-                             [Socket, Ref]),
-            %% Reply will be handled from the worker
-            {noreply, State, State#state.inactivity_timeout}
+    %% Since cast can fail because of a timed out connection without gen_rpc knowing it,
+    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
+    case net_kernel:connect_node(Node) of
+        true ->
+            case gen_tcp:send(Socket, Packet) of
+                {error, timeout} ->
+                    ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"timeout\"",
+                                     [Socket, Ref]),
+                    %% Reply will be handled from the worker
+                    {stop, {badtcp,send_timeout}, State};
+                {error, Reason} ->
+                    ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"~p\"",
+                                     [Socket, Ref, Reason]),
+                    %% Reply will be handled from the worker
+                    {stop, {badtcp,Reason}, State};
+                ok ->
+                    ok = lager:debug("function=handle_call message=call event=transmission_succeeded socket=\"~p\" call_reference=\"~p\"",
+                                     [Socket, Ref]),
+                    %% Reply will be handled from the worker
+                    {noreply, State, State#state.inactivity_timeout}
+            end;
+        Else when Else =:= false; Else =:= ignored ->
+            {stop, {badrpc,nodedown}, State}
     end;
 
 %% Gracefully terminate
@@ -204,24 +212,31 @@ handle_call(Msg, _Caller, State) ->
     {stop, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts
-handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = State) ->
+handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket,node=Node} = State) ->
     {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
     %% Cast requests do not need a reference
     Packet = erlang:term_to_binary({node(), PacketTuple}),
     ok = lager:debug("function=handle_cast message=cast event=constructing_cast_term socket=\"~p\"", [Socket]),
     %% Set the send timeout and do not run in active mode - we're a cast!
     ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
-    case gen_tcp:send(Socket, Packet) of
-        {error, timeout} ->
-            %% Terminate will handle closing the socket
-            ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
-            {stop, {badtcp,send_timeout}, State};
-        {error, Reason} ->
-            ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
-            {stop, {badtcp,Reason}, State};
-        ok ->
-            ok = lager:debug("function=handle_cast message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
-            {noreply, State, State#state.inactivity_timeout}
+    %% Since cast can fail because of a timed out connection without gen_rpc knowing it,
+    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
+    case net_kernel:connect_node(Node) of
+        true ->
+            case gen_tcp:send(Socket, Packet) of
+                {error, timeout} ->
+                    %% Terminate will handle closing the socket
+                    ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
+                    {stop, {badtcp,send_timeout}, State};
+                {error, Reason} ->
+                    ok = lager:error("function=handle_cast message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+                    {stop, {badtcp,Reason}, State};
+                ok ->
+                    ok = lager:debug("function=handle_cast message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
+                    {noreply, State, State#state.inactivity_timeout}
+            end;
+        Else when Else =:= false; Else =:= ignored ->
+            {stop, {badrpc,nodedown}, State}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
