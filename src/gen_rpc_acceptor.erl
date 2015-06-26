@@ -55,7 +55,8 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({ClientIp, Node}) ->
-    process_flag(trap_exit, true),
+    _OldVal = process_flag(trap_exit, true),
+    ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
     ok = lager:info("function=init client_node=\"~s\" client_ip=\"~p\"", [Node, ClientIp]),
     {ok, SendTO} = application:get_env(?APP, send_timeout),
     {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
@@ -126,16 +127,6 @@ handle_sync_event(Event, _From, StateName, State) ->
 handle_info({tcp, Socket, Data}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
     waiting_for_data({data, Data}, State);
 
-handle_info({tcp_closed, Socket}, _StateName, #state{client_node=Node,socket=Socket} = State) ->
-    ok = lager:notice("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" client_node=\"~s\" action=stopping",
-                      [Socket, Node]),
-    {stop, normal, State};
-
-handle_info({tcp_error, Socket, Reason}, _StateName, #state{client_node=Node,socket=Socket} = State) ->
-    ok = lager:notice("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" client_node=\"~s\" reason=\"~p\" action=stopping",
-                      [Socket, Node, Reason]),
-    {stop, normal, State};
-
 %% Handle a call worker message
 handle_info({call_reply, PacketBin}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
     ok = lager:debug("function=handle_info message=call_reply event=call_reply_received socket=\"~p\"", [Socket]),
@@ -147,6 +138,25 @@ handle_info({call_reply, PacketBin}, waiting_for_data, #state{socket=Socket} = S
             ok = lager:error("function=handle_info message=call_reply event=failed_to_send_call_reply socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
             {stop, {badtcp, Reason}, State}
     end;
+
+handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
+    ok = lager:notice("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" client_node=\"~s\" action=stopping",
+                      [Socket, Node]),
+    {stop, normal, State};
+
+handle_info({tcp_error, Socket, Reason}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
+    ok = lager:notice("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" client_node=\"~s\" reason=\"~p\" action=stopping",
+                      [Socket, Node, Reason]),
+    {stop, normal, State};
+
+%% Handle VM node down information
+handle_info({nodedown, Node, [{nodedown_reason,Reason}]}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
+    ok = lager:warning("function=handle_info message=nodedown event=node_down socket=\"~p\" node=~s reason=\"~p\" action=stopping", [Socket, Node, Reason]),
+    {stop, normal, State};
+
+%% Stub for other node information
+handle_info({NodeEvent, _Node, _InfoList}, StateName, State) when NodeEvent =:= nodeup; NodeEvent =:= nodedown ->
+    {next_state, StateName, State, State#state.inactivity_timeout};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, StateName, State) ->

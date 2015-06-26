@@ -17,7 +17,7 @@
 
 %%% Local state
 -record(state, {socket :: port(),
-        node :: atom(),
+        server_node :: atom(),
         send_timeout :: non_neg_integer(),
         receive_timeout :: non_neg_integer(),
         inactivity_timeout :: non_neg_integer() | infinity}).
@@ -131,7 +131,8 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
 %%% Behaviour callbacks
 %%% ===================================================
 init({Node}) ->
-    process_flag(trap_exit, true),
+    _OldVal = erlang:process_flag(trap_exit, true),
+    ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
     %% Extract application-specific settings
     Settings = application:get_all_env(?APP),
     {connect_timeout, ConnTO} = lists:keyfind(connect_timeout, 1, Settings),
@@ -155,7 +156,7 @@ init({Node}) ->
                 {ok, Socket} ->
                     ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
                                      [Node, Address, Port]),
-                    {ok, #state{socket=Socket,node=Node,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
+                    {ok, #state{socket=Socket,server_node=Node,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
                 {error, Reason} ->
                     ok = lager:error("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
                                      [Node, Address, Port, Reason]),
@@ -166,7 +167,7 @@ init({Node}) ->
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket,node=Node} = State) ->
+handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket,server_node=Node} = State) ->
     {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
     Ref = erlang:make_ref(),
     %% Spawn the worker that will wait for the server's reply
@@ -177,8 +178,8 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                      [Socket, Ref]),
     %% Since call can fail because of a timed out connection without gen_rpc knowing it,
     %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
-    case net_adm:ping(Node) of
-        pong ->
+    case net_kernel:connect(Node) of
+        true ->
             case gen_tcp:send(Socket, Packet) of
                 {error, timeout} ->
                     ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"timeout\"",
@@ -198,13 +199,13 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                     %% Reply will be handled from the worker
                     {noreply, State, State#state.inactivity_timeout}
             end;
-        pang ->
+        _Else ->
             ok = lager:error("function=handle_call message=call event=node_down socket=\"~p\" call_reference=\"~p\"",
                              [Socket, Ref]),
             {stop, {badrpc,nodedown}, State}
     end;
 %% This is the actual CAST handler
-handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Socket,node=Node} = State) ->
+handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Socket,server_node=Node} = State) ->
     {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
     %% Cast requests do not need a reference
     Packet = erlang:term_to_binary({node(), PacketTuple}),
@@ -213,8 +214,8 @@ handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Soc
     ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
     %% Since cast can fail because of a timed out connection without gen_rpc knowing it,
     %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
-    case net_adm:ping(Node) of
-        pong ->
+    case net_kernel:connect(Node) of
+        true ->
             case gen_tcp:send(Socket, Packet) of
                 {error, timeout} ->
                     %% Terminate will handle closing the socket
@@ -227,7 +228,7 @@ handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Soc
                     ok = lager:debug("function=handle_cast message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
                     {reply, ok, State, State#state.inactivity_timeout}
             end;
-        pang ->
+        _Else ->
             ok = lager:error("function=handle_cast message=cast event=node_down socket=\"~p\"", [Socket]),
             {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
     end;
@@ -269,13 +270,22 @@ handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
     ok = inet:setopts(Socket, [{active, once}]),
     {noreply, State, State#state.inactivity_timeout};
 
+%% Handle VM node down information
+handle_info({nodedown, Node, [{nodedown_reason,Reason}]}, #state{socket=Socket,server_node=Node} = State) ->
+    ok = lager:warning("function=handle_info message=nodedown event=node_down socket=\"~p\" node=~s reason=\"~p\" action=stopping", [Socket, Node, Reason]),
+    {stop, normal, State};
+
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
-    ok = lager:notice("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
+    ok = lager:warning("function=handle_info message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
     {stop, normal, State};
 
 handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
-    ok = lager:notice("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
+    ok = lager:warning("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
     {stop, normal, State};
+
+%% Stub for VM up information
+handle_info({NodeEvent, _Node, _InfoList}, State) when NodeEvent =:= nodeup; NodeEvent =:= nodedown ->
+    {noreply, State, State#state.inactivity_timeout};
 
 %% Handle the inactivity timeout gracefully
 handle_info(timeout, State) ->

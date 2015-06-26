@@ -70,11 +70,7 @@ init_per_testcase(server_inactivity_timeout, Config) ->
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
 init_per_testcase(remote_node_call, Config) ->
-    %% Starting a slave node with Distributed Erlang
-    {ok, _Slave} = slave:start(?SLAVE_IP, ?SLAVE_NAME, "+K true"),
-    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
-    %% Start the application remotely
-    {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [gen_rpc]),
+    ok = start_slave(),
     Config;
 init_per_testcase(_OtherTest, Config) ->
     Config.
@@ -193,3 +189,12 @@ interleaved_call_executor(Num) when is_integer(Num) ->
     ok = timer:sleep((3 - Num) * 1000),
     %% Then return the number
     Num.
+
+start_slave() ->
+    %% Starting a slave node with Distributed Erlang
+    {ok, _Slave} = slave:start(?SLAVE_IP, ?SLAVE_NAME, "+K true"),
+    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
+    %% Start the application remotely
+    {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [gen_rpc]),
+    ok.
+
