@@ -23,6 +23,18 @@
         inactivity_timeout :: non_neg_integer() | infinity}).
 
 %%% Default TCP options
+-ifdef(GEN_TCP_CONN_RESET_NOTIFICATION).
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+        {nodelay,true}, % Send our requests immediately
+        {send_timeout_close,true}, % When the socket times out, close the connection
+        {delay_send,true}, % Scheduler should favor big batch requests
+        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
+        {reuseaddr,true}, % Reuse local port numbers
+        {keepalive,true}, % Keep our channel open
+        {tos,72}, % Deliver immediately
+        {show_econnreset, true}, % Receive connection reset messages
+        {active,false}]). % Retrieve data from socket upon request
+-else.
 -define(DEFAULT_TCP_OPTS, [binary, {packet,4},
         {nodelay,true}, % Send our requests immediately
         {send_timeout_close,true}, % When the socket times out, close the connection
@@ -32,6 +44,7 @@
         {keepalive,true}, % Keep our channel open
         {tos,72}, % Deliver immediately
         {active,false}]). % Retrieve data from socket upon request
+-endif.
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -185,12 +198,12 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                     ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"timeout\"",
                                      [Socket, Ref]),
                     %% Reply will be handled from the worker
-                    {stop, {badtcp,send_timeout}, State};
+                    {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
                 {error, Reason} ->
                     ok = lager:error("function=handle_call message=call event=transmission_failed socket=\"~p\" call_reference=\"~p\" reason=\"~p\"",
                                      [Socket, Ref, Reason]),
                     %% Reply will be handled from the worker
-                    {stop, {badtcp,Reason}, State};
+                    {stop, {badtcp,Reason}, {badtcp,Reason}, State};
                 ok ->
                     ok = lager:debug("function=handle_call message=call event=transmission_succeeded socket=\"~p\" call_reference=\"~p\"",
                                      [Socket, Ref]),
@@ -202,7 +215,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
         _Else ->
             ok = lager:error("function=handle_call message=call event=node_down socket=\"~p\" call_reference=\"~p\"",
                              [Socket, Ref]),
-            {stop, {badrpc,nodedown}, State}
+            {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
     end;
 %% This is the actual CAST handler
 handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Socket,server_node=Node} = State) ->
@@ -240,7 +253,7 @@ handle_call(stop, _Caller, State) ->
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, State) ->
     ok = lager:critical("function=handle_call event=uknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    {stop, {unknown_call, Msg}, State}.
+    {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->

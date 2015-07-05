@@ -19,6 +19,7 @@
         acceptor_pid :: pid(),
         acceptor :: non_neg_integer()}).
 
+%%% Default TCP options
 -define(DEFAULT_TCP_OPTS, [binary, {packet,4},
         {nodelay,true}, % Send our requests immediately
         {send_timeout_close,true}, % When the socket times out, close the connection
@@ -84,12 +85,12 @@ handle_call(get_port, _From, #state{socket=Socket} = State) ->
 %% Gracefully stop
 handle_call(stop, _From, State) ->
     ok = lager:debug("function=handle_call message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
-    {stop, normal, State};
+    {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _From, State) ->
     ok = lager:critical("function=handle_call event=unknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    {stop, {unknown_call, Msg}, State}.
+    {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->

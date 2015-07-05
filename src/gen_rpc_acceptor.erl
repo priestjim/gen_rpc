@@ -22,6 +22,17 @@
         client_ip :: tuple(),
         client_node :: atom()}).
 
+%%% Default TCP options
+-ifdef(GEN_TCP_CONN_RESET_NOTIFICATION).
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+        {show_econnreset, true}, % Receive connection reset messages
+        {active,once}]). % Retrieve data from socket upon request
+-else.
+-define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+        {active,once}]). % Retrieve data from socket upon request
+-endif.
+
+
 %%% Server functions
 -export([start_link/2, set_socket/2, stop/1]).
 
@@ -75,7 +86,7 @@ waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) -
             % Now we own the socket
             ok = lager:debug("function=waiting_for_socket event=acquiring_socket_ownership socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
                              [Socket, ClientIp, Ip]),
-            ok = inet:setopts(Socket, [{active, once}, {packet, 4}, binary, {send_timeout, State#state.send_timeout}]),
+            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|?DEFAULT_TCP_OPTS]),
             {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
 
