@@ -23,18 +23,6 @@
         inactivity_timeout :: non_neg_integer() | infinity}).
 
 %%% Default TCP options
--ifdef(GEN_TCP_CONN_RESET_NOTIFICATION).
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
-        {nodelay,true}, % Send our requests immediately
-        {send_timeout_close,true}, % When the socket times out, close the connection
-        {delay_send,true}, % Scheduler should favor big batch requests
-        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
-        {reuseaddr,true}, % Reuse local port numbers
-        {keepalive,true}, % Keep our channel open
-        {tos,72}, % Deliver immediately
-        {show_econnreset, true}, % Receive connection reset messages
-        {active,false}]). % Retrieve data from socket upon request
--else.
 -define(DEFAULT_TCP_OPTS, [binary, {packet,4},
         {nodelay,true}, % Send our requests immediately
         {send_timeout_close,true}, % When the socket times out, close the connection
@@ -44,7 +32,6 @@
         {keepalive,true}, % Keep our channel open
         {tos,72}, % Deliver immediately
         {active,false}]). % Retrieve data from socket upon request
--endif.
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -165,7 +152,7 @@ init({Node}) ->
             Address = get_remote_node_ip(Node),
             ok = lager:debug("function=init event=remote_server_started_successfully server_node=\"~s\" server_ip=\"~p:~B\"",
                              [Node, Address, Port]),
-            case gen_tcp:connect(Address, Port, ?DEFAULT_TCP_OPTS, ConnTO) of
+            case gen_tcp:connect(Address, Port, default_tcp_opts(), ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
                                      [Node, Address, Port]),
@@ -323,6 +310,17 @@ terminate(_Reason, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+otp_release() ->
+    erlang:list_to_integer(erlang:system_info(otp_release)).
+
+default_tcp_opts() ->
+    case otp_release() >= 18 of
+        true ->
+            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
+        false ->
+            ?DEFAULT_TCP_OPTS
+    end.
+
 %% For loopback communication and performance testing
 get_remote_node_ip(Node) when Node =:= node() ->
     {127,0,0,1};
@@ -341,7 +339,6 @@ call_worker(Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
             ok = lager:debug("function=call_worker event=reply_received call_reference=\"~p\" reply=\"~p\"",
                              [Ref, Reply]),
             _Ign = gen_server:reply(Caller, Reply),
-            exit(normal),
             ok;
         Else ->
             ok = lager:error("function=call_worker event=invalid_message_received call_reference=\"~p\" message=\"~p\"",

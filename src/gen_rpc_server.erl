@@ -30,6 +30,16 @@
         {tos,72}, % Deliver immediately
         {active,false}]). % Retrieve data from socket upon request
 
+%%% The TCP options that should be copied from the listener to the acceptor
+-define(ACCEPTOR_TCP_OPTS, [nodelay,
+        send_timeout_close,
+        delay_send,
+        linger,
+        reuseaddr,
+        keepalive,
+        tos,
+        active]).
+
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
 
@@ -63,7 +73,7 @@ init({Node}) ->
     ok = lager:info("function=init client_node=\"~s\"", [Node]),
     process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
-    case gen_tcp:listen(0, ?DEFAULT_TCP_OPTS) of
+    case gen_tcp:listen(0, default_tcp_opts()) of
         {ok, Socket} ->
             ok = lager:info("function=init event=listener_started_successfully client_node=\"~s\"", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
@@ -160,6 +170,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+otp_release() ->
+    erlang:list_to_integer(erlang:system_info(otp_release)).
+
+default_tcp_opts() ->
+    case otp_release() >= 18 of
+        true ->
+            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
+        false ->
+            ?DEFAULT_TCP_OPTS
+    end.
+
+acceptor_tcp_opts() ->
+    case otp_release() >= 18 of
+        true ->
+            [show_econnreset|?ACCEPTOR_TCP_OPTS];
+        false ->
+            ?ACCEPTOR_TCP_OPTS
+    end.
+
+
 make_process_name(Node) ->
     NodeBin = atom_to_binary(Node, latin1),
     binary_to_atom(<<"gen_rpc_server_", NodeBin/binary>>, latin1).
@@ -168,7 +198,7 @@ make_process_name(Node) ->
 %% listening socket to the new acceptor socket.
 set_sockopt(ListSock, AccSocket) ->
     true = inet_db:register_socket(AccSocket, inet_tcp),
-    case prim_inet:getopts(ListSock, [nodelay, send_timeout_close, delay_send, linger, reuseaddr, keepalive, tos, active]) of
+    case prim_inet:getopts(ListSock, acceptor_tcp_opts()) of
         {ok, Opts} ->
             case prim_inet:setopts(AccSocket, Opts) of
                 ok    -> ok;

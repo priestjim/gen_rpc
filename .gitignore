@@ -17,6 +17,7 @@ _rel
 _deps
 _plugins
 _tdeps
+_plts
 logs
 _build
 rebar3

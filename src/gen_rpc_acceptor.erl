@@ -201,5 +201,4 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     Result = erlang:apply(M, F, A),
     PacketBin = erlang:term_to_binary({WorkerPid, Ref, Result}),
     Parent ! {call_reply, PacketBin},
-    exit(normal),
     ok.

@@ -75,7 +75,7 @@ clean:
 # Full clean and removal of all build artifacts. Remove deps first to avoid
 # wasted effort of cleaning deps before nuking them.
 distclean: clean
-	@rm -rf _build log .rebar ebin/ $(PROJ).plt
+	@rm -rf _build deps log .rebar ebin/ $(PROJ).plt
 	@find . -name erl_crash.dump -type f -delete
 
 testclean:
