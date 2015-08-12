@@ -130,7 +130,7 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         %% passive connections will remain open and leave us prone to
         %% a DoS file descriptor depletion attack
         case prim_inet:async_accept(ListSock, -1) of
-            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}};
+            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}, hibernate};
             {error, NewRef} -> exit({async_accept, inet:format_error(NewRef)})
         end
     catch
