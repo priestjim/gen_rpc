@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %%% Include this library's name macro
--include("include/app.hrl").
+-include("app.hrl").
 
 %%% Supervisor functions
 -export([start_link/0, stop/0]).

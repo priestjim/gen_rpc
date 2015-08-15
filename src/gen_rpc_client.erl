@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %%% Include this library's name macro
--include("include/app.hrl").
+-include("app.hrl").
 
 %%% Local state
 -record(state, {socket :: port(),

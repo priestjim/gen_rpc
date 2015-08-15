@@ -13,7 +13,7 @@
 -behaviour(gen_fsm).
 
 %%% Include this library's name macro
--include("include/app.hrl").
+-include("app.hrl").
 
 %% Local state
 -record(state, {socket = undefined :: port() | undefined,
