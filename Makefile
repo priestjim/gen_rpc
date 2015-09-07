@@ -100,7 +100,7 @@ dialyzer: $(BASE_PLT)
 
 # Run epmd to allow Distributed Erlang to run during tests
 epmd:
-	@pgrep -q epmd || epmd -daemon || true
+	@pgrep -x epmd || epmd -daemon || true
 
 $(REBAR):
 	curl -Lo rebar3 $(REBAR_URL) || wget $(REBAR_URL)
