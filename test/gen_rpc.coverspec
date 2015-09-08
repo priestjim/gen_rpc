@@ -1,0 +1,17 @@
+
+{nodes, ['gen_rpc_master@127.0.0.1', 'gen_rpc_slave@127.0.0.1']}.
+
+{level, details}. 
+
+{incl_mods, [
+gen_rpc_acceptor
+,gen_rpc_client_sup
+,gen_rpc_server
+,gen_rpc_acceptor_sup
+,gen_rpc_dispatcher
+,gen_rpc_server_sup
+,gen_rpc_client
+,gen_rpc
+,gen_rpc_sup
+]}.
+

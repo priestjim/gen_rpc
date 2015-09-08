@@ -133,14 +133,14 @@ client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named proces, shouldn't be there
+    %% Lookup the client named process, shouldn't be there
     undefined = whereis(?NODE).
 
 server_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [server_inactivity_timeout]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named proces, shouldn't be there
+    %% Lookup the client named process, shouldn't be there
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).
