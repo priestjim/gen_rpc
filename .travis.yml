@@ -1,0 +1,25 @@
+sudo: false
+language: erlang
+otp_release:
+       - 18.0
+       - 17.5
+       - 17.4
+       - 17.3
+       - 17.1
+       - 17.0
+cache:
+  directories:
+  - $HOME/.cache/rebar3/hex/default/
+install: "true" # don't let travis run get-deps
+script: "make && make test"
+
+after_success: "make dialyzer"
+
+branches:
+        only:
+                - master
+                - develop
+notifications:
+  email:
+    - example@example.com
+
