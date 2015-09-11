@@ -176,6 +176,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
     Packet = erlang:term_to_binary({node(), WorkerPid, Ref, PacketTuple}),
     ok = lager:debug("function=handle_call message=call event=constructing_call_term socket=\"~p\" call_reference=\"~p\"",
                      [Socket, Ref]),
+    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
     %% Since call can fail because of a timed out connection without gen_rpc knowing it,
     %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
     case net_kernel:connect(Node) of
@@ -195,7 +196,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                     ok = lager:debug("function=handle_call message=call event=transmission_succeeded socket=\"~p\" call_reference=\"~p\"",
                                      [Socket, Ref]),
                     %% We need to enable the socket and perform the call only if the call succeeds
-                    ok = inet:setopts(Socket, [{active, once}, {send_timeout, SendTO}]),
+                    ok = inet:setopts(Socket, [{active, once}]),
                     %% Reply will be handled from the worker
                     {noreply, State, State#state.inactivity_timeout}
             end;
@@ -352,7 +353,7 @@ call_worker(Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
             exit({error, timeout})
     end.
 
-%% Merging user-define timeout values with state timeout values
+%% Merges user-define timeout values with state timeout values
 merge_timeout_values(SRecvTO, undefined, SSendTO, undefined) ->
     {SRecvTO, SSendTO};
 merge_timeout_values(_SRecvTO, URecvTO, SSendTO, undefined) ->
