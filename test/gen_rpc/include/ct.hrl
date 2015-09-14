@@ -7,7 +7,8 @@
 %%% Common Test includes
 -include_lib("common_test/include/ct.hrl").
 %%% Include this library's name macro
--include("include/app.hrl").
+-include("app.hrl").
+
 %%% Application setup
 -define(ctApplicationSetup(),
     [application:set_env(Application, Key, Value, [{persistent, true}]) || {Application, Key, Value} <-
@@ -21,4 +22,18 @@
             {lager_common_test_backend, [error, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]}
         ]}
     ]]
+).
+
+%%% Node definitions
+-define(NODE, 'gen_rpc_master@127.0.0.1').
+-define(SLAVE, 'gen_rpc_slave@127.0.0.1').
+-define(SLAVE_IP, '127.0.0.1').
+-define(SLAVE_NAME, 'gen_rpc_slave').
+
+-define(restart_application(), 
+    begin
+        ok = application:stop(?APP),
+        ok = application:unload(?APP),
+        ok = application:start(?APP)
+    end  
 ).

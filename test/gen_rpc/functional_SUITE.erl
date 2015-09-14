@@ -8,13 +8,7 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% CT Macros
--include_lib("gen_rpc/include/ct.hrl").
-
-%%% Node definitions
--define(NODE, 'gen_rpc_master@127.0.0.1').
--define(SLAVE, 'gen_rpc_slave@127.0.0.1').
--define(SLAVE_IP, '127.0.0.1').
--define(SLAVE_NAME, 'gen_rpc_slave').
+-include_lib("include/ct.hrl").
 
 %%% Common Test callbacks
 -export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
@@ -62,11 +56,11 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
     Config;
 init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
 init_per_testcase(remote_node_call, Config) ->
@@ -76,10 +70,10 @@ init_per_testcase(_OtherTest, Config) ->
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     Config;
 end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     Config;
 end_per_testcase(remote_node_call, Config) ->
     ok = slave:stop(?SLAVE),
@@ -87,10 +81,6 @@ end_per_testcase(remote_node_call, Config) ->
 end_per_testcase(_OtherTest, Config) ->
     Config.
 
-restart_application() ->
-    ok = application:stop(?APP),
-    ok = application:unload(?APP),
-    ok = application:start(?APP).
 
 %%% ===================================================
 %%% Test cases
