@@ -9,6 +9,12 @@
 %%% Include this library's name macro
 -include("app.hrl").
 
+%%% Node definitions
+-define(NODE, 'gen_rpc_master@127.0.0.1').
+-define(SLAVE, 'gen_rpc_slave@127.0.0.1').
+-define(SLAVE_IP, '127.0.0.1').
+-define(SLAVE_NAME, 'gen_rpc_slave').
+
 %%% Application setup
 -define(ctApplicationSetup(),
     [application:set_env(Application, Key, Value, [{persistent, true}]) || {Application, Key, Value} <-
@@ -23,12 +29,6 @@
         ]}
     ]]
 ).
-
-%%% Node definitions
--define(NODE, 'gen_rpc_master@127.0.0.1').
--define(SLAVE, 'gen_rpc_slave@127.0.0.1').
--define(SLAVE_IP, '127.0.0.1').
--define(SLAVE_NAME, 'gen_rpc_slave').
 
 -define(restart_application(), 
     begin
