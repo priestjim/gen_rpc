@@ -203,7 +203,7 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     % and manifest as timeout. Wrap inside anonymous function with catch
     % will crash the worker quickly not manifest as a timeout.
     % See call_MFA_undef test.
-    Fun = fun() -> catch erlang:apply(M, F, A) end,
-    PacketBin = erlang:term_to_binary({WorkerPid, Ref, Fun()}),
+    % Fun = fun() -> catch erlang:apply(M, F, A) end,
+    PacketBin = erlang:term_to_binary({WorkerPid, Ref, catch erlang:apply(M, F, A)}),
     Parent ! {call_reply, PacketBin},
     ok.
