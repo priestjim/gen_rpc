@@ -16,7 +16,7 @@ after_success: "make dialyzer"
 
 branches:
         only:
-                - master
+                - codecov
 notifications:
   email:
     - example@example.com
