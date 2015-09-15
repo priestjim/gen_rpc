@@ -7,7 +7,7 @@
 %%% Common Test includes
 -include_lib("common_test/include/ct.hrl").
 %%% Include this library's name macro
--include_lib("app.hrl").
+-include_lib("gen_rpc/include/app.hrl").
 
 %%% Node definitions
 -define(NODE, 'gen_rpc_master@127.0.0.1').
