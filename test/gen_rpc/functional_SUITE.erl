@@ -25,6 +25,7 @@
         cast/1,
         cast_anonymous_function/1,
         cast_MFA_undef/1,
+        cast_MFA_exit/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
         remote_node_call/1]).
@@ -114,9 +115,7 @@ call_anonymous_function(_Config) ->
 call_anonymous_undef(_Config) ->
     ok = ct:pal("Testing [call_anonymous_undef]"),
     {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply,
-                                        [ fun() -> os:timestamp_undef() end,
-                                          []
-                                        ]),
+                                        [ fun() -> os:timestamp_undef() end, [] ]),
     ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_MFA_undef(_Config) ->
@@ -155,9 +154,12 @@ cast_anonymous_function(_Config) ->
     ok = gen_rpc:cast(?NODE, erlang, apply, [ fun() -> os:timestamp() end, []]). 
 
 cast_MFA_undef(_Config) ->
-    ok = ct:pal("Testing [cast_anonymous_function]"),
+    ok = ct:pal("Testing [cast_MFA_undef]"),
     ok = gen_rpc:cast(?NODE, os, timestamp_undef, []). 
 
+cast_MFA_exit(_Config) ->
+    ok = ct:pal("Testing [cast_MFA_exit]"),
+    ok = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die)  end, []]).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
