@@ -6,9 +6,9 @@
 
 {application, gen_rpc,
     [{description, "An Erlang RPC library for out-of-band messaging"},
-    {vsn, "0.1.0"},
-    {mod, {gen_rpc, []}},
-    {registered, [gen_rpc_sup, gen_rpc_dispatcher, gen_rpc_server_sup, gen_rpc_client_sup, gen_rpc_acceptor_sup]},
+    {vsn, "1.0.0"},
+    {mod, {gen_rpc_app, []}},
+    {registered, [gen_rpc_dispatcher]},
     {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
     {env,[
         %% Client connect timeout
