@@ -63,7 +63,7 @@ stop(Pid) when is_pid(Pid) ->
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
--spec get_port(pid()) -> {'ok', inet:port_number()} | {'error', _}.
+-spec get_port(pid()) -> {'ok', inet:port_number()} | {'error', term()} | term(). %dialyzer complains without term().
 get_port(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, get_port).
 

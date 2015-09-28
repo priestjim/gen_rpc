@@ -23,7 +23,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% Launch a local receiver and return the port
--spec start_child(Node::node()) -> {'ok', Port::port()}.
+-spec start_child(Node::node()) -> {'ok', inet:port_number()} | {ok, _}.
 start_child(Node) when is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_server client_node=\"~s\"", [Node]),
     {ok, Pid} = supervisor:start_child(?MODULE, [Node]),
