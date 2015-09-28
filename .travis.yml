@@ -12,8 +12,8 @@ cache:
   - $HOME/.cache/rebar3
   - _plts
 install: "true"
-script: "make dist"
-after_success: "make dialyzer"
+script: "make test"
+after_success: "make xref && make dialyzer"
 branches:
   only:
     - master
