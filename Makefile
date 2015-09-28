@@ -91,7 +91,7 @@ dist: $(REBAR) test
 # =============================================================================
 
 shell: $(REBAR) epmd
-	@REBAR_PROFILE=dev $(REBAR) do shell
+	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc@127.0.0.1
 
 # =============================================================================
 # Misc targets
