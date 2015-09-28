@@ -19,25 +19,24 @@
 %%% Development start/stop functions
 -export([start/0, stop/0]).
 
--type app_start_result()::{'ok', pid()} | {'ok', pid(), term()} | {'error', term()}.
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
--spec start(application:start_type(), term()) -> app_start_result(). 
+-spec start(_,_) -> supervisor:startlink_ret().
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
--spec stop(term()) -> 'ok'.
+-spec stop(_) -> 'ok'.
 stop(_State) ->
     ok.
 
 %%% ===================================================
 %%% Development functions
 %%% ===================================================
--spec start() -> app_start_result().
+-spec start() -> 'ok' | {'error', term()}.
 start() ->
     application:start(?APP).
 
--spec stop() -> term().
+-spec stop() -> 'ok' | {'error', term()}.
 stop() ->
     application:stop(?APP).

@@ -14,7 +14,7 @@
 
 %%% Local state
 -record(state, {client_ip :: tuple(),
-        client_node :: atom(),
+        client_node :: node(),
         socket :: port(),
         acceptor_pid :: pid(),
         acceptor :: non_neg_integer()}).
@@ -63,6 +63,7 @@ stop(Pid) when is_pid(Pid) ->
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
+-spec get_port(pid()) -> {'ok', inet:port_number()} | {'error', _}.
 get_port(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, get_port).
 
