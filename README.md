@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/linearregression/gen_rpc.svg)](https://travis-ci.org/linearregression/gen_rpc)
+
 # gen_rpc
 An Erlang RPC library for out-of-band messaging
 
