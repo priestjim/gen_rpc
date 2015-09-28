@@ -31,14 +31,14 @@ call(Node, M, F, A, RecvTO) ->
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
--spec cast(Node::node(), M::module(), F::function()) -> ok.
+-spec cast(Node::node(), M::module(), F::function()) -> 'ok'.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
--spec cast(Node::node(), M::module(), F::function(), A::list()) -> ok.
+-spec cast(Node::node(), M::module(), F::function(), A::list()) -> 'ok'.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
--spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> ok.
+-spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'ok'.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).

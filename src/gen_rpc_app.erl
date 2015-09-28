@@ -27,7 +27,7 @@
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
--spec stop(term()) -> ok.
+-spec stop(term()) -> 'ok'.
 stop(_State) ->
     ok.
 
