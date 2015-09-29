@@ -12,23 +12,15 @@
 %%% Behaviour
 -behaviour(gen_server).
 
+%%% Include this library's name macro
+-include("app.hrl").
+
 %%% Local state
 -record(state, {client_ip :: tuple(),
         client_node :: node(),
         socket :: port(),
         acceptor_pid :: pid(),
         acceptor :: non_neg_integer()}).
-
-%%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
-        {nodelay,true}, % Send our requests immediately
-        {send_timeout_close,true}, % When the socket times out, close the connection
-        {delay_send,true}, % Scheduler should favor big batch requests
-        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
-        {reuseaddr,true}, % Reuse local port numbers
-        {keepalive,true}, % Keep our channel open
-        {tos,72}, % Deliver immediately
-        {active,false}]). % Retrieve data from socket upon request
 
 %%% The TCP options that should be copied from the listener to the acceptor
 -define(ACCEPTOR_TCP_OPTS, [nodelay,

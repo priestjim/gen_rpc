@@ -23,7 +23,7 @@
         client_node :: atom()}).
 
 %%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+-define(ACCEPTOR_DEFAULT_TCP_OPTS, [binary, {packet,4},
         {active,once}]). % Retrieve data from socket upon request
 
 %%% Server functions
@@ -188,9 +188,9 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 default_tcp_opts() ->
     case gen_rpc_util:otp_release() >= 18 of
         true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
+            [{show_econnreset, true}|?ACCEPTOR_DEFAULT_TCP_OPTS];
         false ->
-            ?DEFAULT_TCP_OPTS
+            ?ACCEPTOR_DEFAULT_TCP_OPTS
     end.
 
 make_process_name(Node) ->
