@@ -44,6 +44,7 @@ endif
 # verify that the programs we need to run are installed on this system
 # =============================================================================
 ERL = $(shell which erl)
+TYPER = $(shell which typer)
 
 ifeq ($(ERL),)
 $(error "Erlang not available on this system")
@@ -60,9 +61,9 @@ REBAR = $(CURDIR)/rebar3
 endif
 
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
-TYPER_OPTS = --annotate --annotate-inc-files -I ./include
+TYPER_OPTS = --annotate-inc-files -I ./include
 
-PLT_FILE = $(CURDIR)/_plt/*.plt
+PLT_FILE = $(CURDIR)/_plt/*plt
 
 # =============================================================================
 # Build targets
@@ -81,7 +82,7 @@ xref: $(REBAR)
 	@REBAR_PROFILE=dev $(REBAR) do xref
 
 spec: dialyzer
-	@$(TYPER) $(TYPER_OPTS) --plt $(PLT_FILE) -r src/
+	@$(TYPER) --annotate-inc-files -I ./include --plt $(PLT_FILE) -r src/
 
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
