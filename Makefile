@@ -61,7 +61,6 @@ REBAR = $(CURDIR)/rebar3
 endif
 
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
-TYPER_OPTS = --annotate-inc-files -I ./include
 
 PLT_FILE = $(CURDIR)/_plt/*plt
 
