@@ -11,7 +11,7 @@
 -behaviour(application).
 
 %%% Include this library's name macro
--include("include/app.hrl").
+-include("app.hrl").
 
 %%% Application callbacks
 -export([start/2, stop/1]).
