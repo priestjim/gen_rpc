@@ -184,20 +184,9 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-otp_release() ->
-    try
-        erlang:list_to_integer(erlang:system_info(otp_release))
-    catch
-        error:badarg ->
-            %% Before Erlang 17, R was included in the OTP release,
-            %% which would make the list_to_integer call fail.
-            %% Since we only use this function to test the availability
-            %% of the show_econnreset feature, 16 is good enough.
-            16
-    end.
 
 default_tcp_opts() ->
-    case otp_release() >= 18 of
+    case gen_rpc_util:otp_release() >= 18 of
         true ->
             [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
         false ->
