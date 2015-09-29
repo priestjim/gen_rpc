@@ -198,7 +198,12 @@ make_process_name(Node) ->
 %% Process an RPC call request outside of the FSM
 call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     ok = lager:debug("function=call_worker event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),
-    Result = erlang:apply(M, F, A),
-    PacketBin = erlang:term_to_binary({WorkerPid, Ref, Result}),
+    % If called MFA return exception, not of type term().
+    % This fails term_to_binary coversion, crashes process
+    % and manifest as timeout. Wrap inside anonymous function with catch
+    % will crash the worker quickly not manifest as a timeout.
+    % See call_MFA_undef test.
+    % Fun = fun() -> catch erlang:apply(M, F, A) end,
+    PacketBin = erlang:term_to_binary({WorkerPid, Ref, catch erlang:apply(M, F, A)}),
     Parent ! {call_reply, PacketBin},
     ok.

@@ -8,13 +8,7 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% CT Macros
--include_lib("gen_rpc/include/ct.hrl").
-
-%%% Node definitions
--define(NODE, 'gen_rpc_master@127.0.0.1').
--define(SLAVE, 'gen_rpc_slave@127.0.0.1').
--define(SLAVE_IP, '127.0.0.1').
--define(SLAVE_NAME, 'gen_rpc_slave').
+-include_lib("test/gen_rpc/include/ct.hrl").
 
 %%% Common Test callbacks
 -export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
@@ -22,9 +16,16 @@
 %%% Testing functions
 -export([supervisor_black_box/1,
         call/1,
+        call_anonymous_function/1,
+        call_anonymous_undef/1,
+        call_MFA_undef/1,
+        call_MFA_exit/1,
         call_with_receive_timeout/1,
         interleaved_call/1,
         cast/1,
+        cast_anonymous_function/1,
+        cast_MFA_undef/1,
+        cast_MFA_exit/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
         remote_node_call/1]).
@@ -62,11 +63,11 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
     Config;
 init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
 init_per_testcase(remote_node_call, Config) ->
@@ -76,10 +77,10 @@ init_per_testcase(_OtherTest, Config) ->
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     Config;
 end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = restart_application(),
+    ok = ?restart_application(),
     Config;
 end_per_testcase(remote_node_call, Config) ->
     ok = slave:stop(?SLAVE),
@@ -87,10 +88,6 @@ end_per_testcase(remote_node_call, Config) ->
 end_per_testcase(_OtherTest, Config) ->
     Config.
 
-restart_application() ->
-    ok = application:stop(?APP),
-    ok = application:unload(?APP),
-    ok = application:start(?APP).
 
 %%% ===================================================
 %%% Test cases
@@ -107,6 +104,29 @@ supervisor_black_box(_Config) ->
 call(_Config) ->
     ok = ct:pal("Testing [call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).
+
+call_anonymous_function(_Config) ->
+    ok = ct:pal("Testing [call_anonymous_function]"),
+    {_,"\"call_anonymous_function\""} = gen_rpc:call(?NODE, erlang, apply,
+                                        [ fun(A) -> {self(), io_lib:print(A)} end, 
+                                          ["call_anonymous_function"]
+                                        ]).
+
+call_anonymous_undef(_Config) ->
+    ok = ct:pal("Testing [call_anonymous_undef]"),
+    {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply,
+                                        [ fun() -> os:timestamp_undef() end, [] ]),
+    ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
+
+call_MFA_undef(_Config) ->
+    ok = ct:pal("Testing [call_MFA_undef]"),
+    {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, os, timestamp_undef),
+    ok = ct:pal("Result [call_MFA_undef]: signal=EXIT Reason={os,timestamp_undef}").
+
+call_MFA_exit(_Config) ->
+    ok = ct:pal("Testing [call_MFA_exit]"),
+    {'EXIT', die} = gen_rpc:call(?NODE,erlang, apply, [fun() ->  exit(die) end, []]),
+    ok = ct:pal("Result [call_MFA_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
     ok = ct:pal("Testing [call_with_receive_timeout]"),
@@ -127,7 +147,19 @@ interleaved_call(_Config) ->
 
 cast(_Config) ->
     ct:pal("Testing [cast]"),
-    ok = gen_rpc:cast(?NODE, os, timestamp).
+    ok = gen_rpc:cast(?NODE, erlang, timestamp).
+
+cast_anonymous_function(_Config) ->
+    ok = ct:pal("Testing [cast_anonymous_function]"),
+    ok = gen_rpc:cast(?NODE, erlang, apply, [ fun() -> os:timestamp() end, []]). 
+
+cast_MFA_undef(_Config) ->
+    ok = ct:pal("Testing [cast_MFA_undef]"),
+    ok = gen_rpc:cast(?NODE, os, timestamp_undef, []). 
+
+cast_MFA_exit(_Config) ->
+    ok = ct:pal("Testing [cast_MFA_exit]"),
+    ok = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die)  end, []]).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
@@ -189,6 +221,8 @@ interleaved_call_executor(Num) when is_integer(Num) ->
     ok = timer:sleep((3 - Num) * 1000),
     %% Then return the number
     Num.
+
+
 
 start_slave() ->
     %% Starting a slave node with Distributed Erlang
