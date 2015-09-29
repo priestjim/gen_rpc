@@ -10,7 +10,7 @@ otp_release:  # travisci complains 17.1 of a 'filelib bug', so excluded
 cache:
   directories:
   - $HOME/.cache/rebar3
-  - _plts
+  - _plt
 install: "true"
 script: "make test xref dialyzer"
 branches:

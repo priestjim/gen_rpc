@@ -16,7 +16,7 @@
 -define(SLAVE_NAME, 'gen_rpc_slave').
 
 %%% Application setup
--define(ctApplicationSetup(),
+-define(set_application_environment(),
     [application:set_env(Application, Key, Value, [{persistent, true}]) || {Application, Key, Value} <-
         [{sync, growl, none},
         {sync, log, none},
@@ -30,10 +30,10 @@
     ]]
 ).
 
--define(restart_application(), 
+-define(restart_application(),
     begin
         ok = application:stop(?APP),
         ok = application:unload(?APP),
         ok = application:start(?APP)
-    end  
+    end
 ).

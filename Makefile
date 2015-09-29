@@ -102,7 +102,7 @@ clean: $(REBAR)
 	@rm -f rebar.lock
 
 distclean: $(REBAR)
-	@rm -rf _build .rebar Mnesia* mnesia* log/ data/ temp-data/ rebar.lock
+	@rm -rf _build _plt .rebar Mnesia* mnesia* log/ data/ temp-data/ rebar.lock
 	@find . -name erl_crash.dump -type f -delete
 	@$(REBAR) clean -a
 

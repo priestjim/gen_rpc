@@ -18,14 +18,14 @@
         call/1,
         call_anonymous_function/1,
         call_anonymous_undef/1,
-        call_MFA_undef/1,
-        call_MFA_exit/1,
+        call_mfa_undef/1,
+        call_mfa_exit/1,
         call_with_receive_timeout/1,
         interleaved_call/1,
         cast/1,
         cast_anonymous_function/1,
-        cast_MFA_undef/1,
-        cast_MFA_exit/1,
+        cast_mfa_undef/1,
+        cast_mfa_exit/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
         remote_node_call/1]).
@@ -53,7 +53,7 @@ init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = net_kernel:start([?NODE, longnames]),
     %% Setup application logging
-    ?ctApplicationSetup(),
+    ?set_application_environment(),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
     ok = ct:pal("Started [functional] suite with master node [~s]", [node()]),
@@ -107,26 +107,23 @@ call(_Config) ->
 
 call_anonymous_function(_Config) ->
     ok = ct:pal("Testing [call_anonymous_function]"),
-    {_,"\"call_anonymous_function\""} = gen_rpc:call(?NODE, erlang, apply,
-                                        [ fun(A) -> {self(), io_lib:print(A)} end, 
-                                          ["call_anonymous_function"]
-                                        ]).
+    {_,"\"call_anonymous_function\""} = gen_rpc:call(?NODE, erlang, apply,[fun(A) -> {self(), io_lib:print(A)} end,
+                                                     ["call_anonymous_function"]]).
 
 call_anonymous_undef(_Config) ->
     ok = ct:pal("Testing [call_anonymous_undef]"),
-    {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply,
-                                        [ fun() -> os:timestamp_undef() end, [] ]),
+    {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
     ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
-call_MFA_undef(_Config) ->
-    ok = ct:pal("Testing [call_MFA_undef]"),
+call_mfa_undef(_Config) ->
+    ok = ct:pal("Testing [call_mfa_undef]"),
     {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, os, timestamp_undef),
-    ok = ct:pal("Result [call_MFA_undef]: signal=EXIT Reason={os,timestamp_undef}").
+    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
-call_MFA_exit(_Config) ->
-    ok = ct:pal("Testing [call_MFA_exit]"),
-    {'EXIT', die} = gen_rpc:call(?NODE,erlang, apply, [fun() ->  exit(die) end, []]),
-    ok = ct:pal("Result [call_MFA_undef]: signal=EXIT Reason={die}").
+call_mfa_exit(_Config) ->
+    ok = ct:pal("Testing [call_mfa_exit]"),
+    {'EXIT', die} = gen_rpc:call(?NODE, erlang, apply, [fun() -> exit(die) end, []]),
+    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
     ok = ct:pal("Testing [call_with_receive_timeout]"),
@@ -134,7 +131,7 @@ call_with_receive_timeout(_Config) ->
     ok = timer:sleep(500).
 
 interleaved_call(_Config) ->
-    ct:pal("Testing [interleaved_call]"),
+    ok = ct:pal("Testing [interleaved_call]"),
     %% Spawn 3 consecutive processes that execute gen_rpc:call
     %% to the remote node and wait an inversely proportionate time
     %% for their result (effectively rendering the results out of order)
@@ -146,19 +143,19 @@ interleaved_call(_Config) ->
     ok.
 
 cast(_Config) ->
-    ct:pal("Testing [cast]"),
+    ok = ct:pal("Testing [cast]"),
     ok = gen_rpc:cast(?NODE, erlang, timestamp).
 
 cast_anonymous_function(_Config) ->
     ok = ct:pal("Testing [cast_anonymous_function]"),
-    ok = gen_rpc:cast(?NODE, erlang, apply, [ fun() -> os:timestamp() end, []]). 
+    ok = gen_rpc:cast(?NODE, erlang, apply, [ fun() -> os:timestamp() end, []]).
 
-cast_MFA_undef(_Config) ->
-    ok = ct:pal("Testing [cast_MFA_undef]"),
-    ok = gen_rpc:cast(?NODE, os, timestamp_undef, []). 
+cast_mfa_undef(_Config) ->
+    ok = ct:pal("Testing [cast_mfa_undef]"),
+    ok = gen_rpc:cast(?NODE, os, timestamp_undef, []).
 
-cast_MFA_exit(_Config) ->
-    ok = ct:pal("Testing [cast_MFA_exit]"),
+cast_mfa_exit(_Config) ->
+    ok = ct:pal("Testing [cast_mfa_exit]"),
     ok = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die)  end, []]).
 
 client_inactivity_timeout(_Config) ->
@@ -222,8 +219,6 @@ interleaved_call_executor(Num) when is_integer(Num) ->
     %% Then return the number
     Num.
 
-
-
 start_slave() ->
     %% Starting a slave node with Distributed Erlang
     {ok, _Slave} = slave:start(?SLAVE_IP, ?SLAVE_NAME, "+K true"),
@@ -231,4 +226,3 @@ start_slave() ->
     %% Start the application remotely
     {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [gen_rpc]),
     ok.
-
