@@ -15,7 +15,7 @@
 %%% Include this library's name macro
 -include("app.hrl").
 
-%% Local state
+%%% Local state
 -record(state, {socket = undefined :: port() | undefined,
         send_timeout :: non_neg_integer(),
         inactivity_timeout :: non_neg_integer() | infinity,
@@ -23,15 +23,8 @@
         client_node :: atom()}).
 
 %%% Default TCP options
--ifdef(GEN_TCP_CONN_RESET_NOTIFICATION).
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
-        {show_econnreset, true}, % Receive connection reset messages
-        {active,once}]). % Retrieve data from socket upon request
--else.
 -define(DEFAULT_TCP_OPTS, [binary, {packet,4},
         {active,once}]). % Retrieve data from socket upon request
--endif.
-
 
 %%% Server functions
 -export([start_link/2, set_socket/2, stop/1]).
@@ -86,7 +79,7 @@ waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) -
             % Now we own the socket
             ok = lager:debug("function=waiting_for_socket event=acquiring_socket_ownership socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
                              [Socket, ClientIp, Ip]),
-            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|?DEFAULT_TCP_OPTS]),
+            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|default_tcp_opts()]),
             {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
 
@@ -191,6 +184,26 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+otp_release() ->
+    try
+        erlang:list_to_integer(erlang:system_info(otp_release))
+    catch
+        error:badarg ->
+            %% Before Erlang 17, R was included in the OTP release,
+            %% which would make the list_to_integer call fail.
+            %% Since we only use this function to test the availability
+            %% of the show_econnreset feature, 16 is good enough.
+            16
+    end.
+
+default_tcp_opts() ->
+    case otp_release() >= 18 of
+        true ->
+            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
+        false ->
+            ?DEFAULT_TCP_OPTS
+    end.
+
 make_process_name(Node) ->
     NodeBin = atom_to_binary(Node, latin1),
     binary_to_atom(<<"gen_rpc_acceptor_", NodeBin/binary>>, latin1).

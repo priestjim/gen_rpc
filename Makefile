@@ -62,7 +62,7 @@ endif
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 TYPER_OPTS = --annotate --annotate-inc-files -I ./include
 
-PLT_FILE = $(CURDIR)/_build/dev/*.plt
+PLT_FILE = $(CURDIR)/_plt/*.plt
 
 # =============================================================================
 # Build targets
