@@ -15,23 +15,30 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
+-spec call(Node::node(), M::module(), F::function()) -> term().
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
 
+-spec call(Node::node(), M::module(), F::function(), A::list()) -> term().
 call(Node, M, F, A) ->
     gen_rpc_client:call(Node, M, F, A).
 
+-spec call(Node::node(), M::module(), F::function(), A::list(), RecvTO::timeout()) -> term().
 call(Node, M, F, A, RecvTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO).
 
+-spec call(Node::node(), M::module(), F::function(), A::list(), RecvTO::timeout(), SendTO::timeout()) -> term().
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
+-spec cast(Node::node(), M::module(), F::function()) -> 'ok'.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
+-spec cast(Node::node(), M::module(), F::function(), A::list()) -> 'ok'.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
+-spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'ok'.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).

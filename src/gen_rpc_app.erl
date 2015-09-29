@@ -22,17 +22,21 @@
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
+-spec start(_,_) -> supervisor:startlink_ret().
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
+-spec stop(_) -> 'ok'.
 stop(_State) ->
     ok.
 
 %%% ===================================================
-%%% Application callbacks
+%%% Development functions
 %%% ===================================================
+-spec start() -> 'ok' | {'error', term()}.
 start() ->
     application:start(?APP).
 
+-spec stop() -> 'ok' | {'error', term()}.
 stop() ->
     application:stop(?APP).
