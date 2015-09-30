@@ -141,7 +141,7 @@ init({Node}) ->
             Address = get_remote_node_ip(Node),
             ok = lager:debug("function=init event=remote_server_started_successfully server_node=\"~s\" server_ip=\"~p:~B\"",
                              [Node, Address, Port]),
-            case gen_tcp:connect(Address, Port, gen_rpc_util:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
+            case gen_tcp:connect(Address, Port, gen_rpc_helpers:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
                                      [Node, Address, Port]),

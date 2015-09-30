@@ -4,7 +4,7 @@
 %%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 
--module(gen_rpc_util).
+-module(gen_rpc_helpers).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 -include("app.hrl").
