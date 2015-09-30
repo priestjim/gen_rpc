@@ -66,7 +66,7 @@ init({Node}) ->
     ok = lager:info("function=init client_node=\"~s\"", [Node]),
     process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
-    case gen_tcp:listen(0, default_tcp_opts()) of
+    case gen_tcp:listen(0, gen_rpc_util:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
             ok = lager:info("function=init event=listener_started_successfully client_node=\"~s\"", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
@@ -163,14 +163,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-
-default_tcp_opts() ->
-    case gen_rpc_util:otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
-        false ->
-            ?DEFAULT_TCP_OPTS
-    end.
 
 acceptor_tcp_opts() ->
     case gen_rpc_util:otp_release() >= 18 of
