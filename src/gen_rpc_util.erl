@@ -9,7 +9,7 @@
 
 -include("app.hrl").
 
--export([otp_release/0, default_tcp_opts/0, default_tcp_opts/1]).
+-export([otp_release/0, default_tcp_opts/1]).
 
 -spec otp_release() -> pos_integer().
 otp_release() ->
@@ -31,13 +31,5 @@ default_tcp_opts(Default_tcp_opts) ->
             [{show_econnreset, true} | Default_tcp_opts];
         false ->
             Default_tcp_opts
-    end.
-
-default_tcp_opts() ->
-    case gen_rpc_util:otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
-        false ->
-            ?DEFAULT_TCP_OPTS
     end.
 
