@@ -79,7 +79,7 @@ waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) -
             % Now we own the socket
             ok = lager:debug("function=waiting_for_socket event=acquiring_socket_ownership socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
                              [Socket, ClientIp, Ip]),
-            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|gen_rpc_helpers:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
+            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|gen_rpc_helper:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
             {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
 
