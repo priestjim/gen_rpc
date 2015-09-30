@@ -25,11 +25,11 @@ otp_release() ->
     end.
 
 %-spec default_tcp_opts() -> gen_rpc_tcp_opts().
-default_tcp_opts(Default_tcp_opts) ->  
+default_tcp_opts(DefaultTcpOpts) ->  
     case otp_release() >= 18 of
         true ->
-            [{show_econnreset, true} | Default_tcp_opts];
+            [{show_econnreset, true} | DefaultTcpOpts];
         false ->
-            Default_tcp_opts
+            DefaultTcpOpts
     end.
 
