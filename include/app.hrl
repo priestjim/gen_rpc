@@ -16,3 +16,7 @@
         {keepalive,true}, % Keep our channel open
         {tos,72}, % Deliver immediately
         {active,false}]). % Retrieve data from socket upon request
+
+-type socket_setopt() ::
+        gen_sctp:option() | gen_tcp:option() | gen_udp:option().
+

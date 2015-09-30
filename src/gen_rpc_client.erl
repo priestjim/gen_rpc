@@ -106,13 +106,13 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
                     %% but it's good enough for now
-                    gen_server:call(NewPid, {{cast,M,F,A},SendTO});
+                    gen_server:cast(NewPid, {{cast,M,F,A},SendTO});
                 {error, Reason} ->
                     Reason
             end;
         Pid ->
             ok = lager:debug("function=cast event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
-            gen_server:call(Pid, {{cast,M,F,A},SendTO})
+            gen_server:cast(Pid, {{cast,M,F,A},SendTO})
     end.
 
 
