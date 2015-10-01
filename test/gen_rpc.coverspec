@@ -8,6 +8,9 @@
     gen_rpc_server,
     gen_rpc_dispatcher,
     gen_rpc_client,
-    gen_rpc
+    gen_rpc_helper,
+    gen_rpc_app,
+    gen_rpc,
+    'Elixir.ExRPC.Supervisor.Server'
 ]}.
 

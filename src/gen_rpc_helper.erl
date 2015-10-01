@@ -11,7 +11,7 @@
 
 -export([otp_release/0, default_tcp_opts/1]).
 
--spec otp_release() -> pos_integer().
+-spec otp_release() -> integer().
 otp_release() ->
     try
         erlang:list_to_integer(erlang:system_info(otp_release))
