@@ -52,14 +52,14 @@ cast(Node, M, F, A) ->
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
--spec safe_cast(Node::node(), M::module(), F::function()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+-spec safe_cast(Node::node(), M::module(), F::function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F) ->
     gen_rpc_client:safe_cast(Node, M, F).
 
--spec safe_cast(Node::node(), M::module(), F::function(), A::list()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+-spec safe_cast(Node::node(), M::module(), F::function(), A::list()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A) ->
     gen_rpc_client:safe_cast(Node, M, F, A).
 
--spec safe_cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+-spec safe_cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
