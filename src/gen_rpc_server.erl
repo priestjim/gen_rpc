@@ -12,23 +12,15 @@
 %%% Behaviour
 -behaviour(gen_server).
 
+%%% Include this library's name macro
+-include("app.hrl").
+
 %%% Local state
 -record(state, {client_ip :: tuple(),
         client_node :: node(),
         socket :: port(),
         acceptor_pid :: pid(),
         acceptor :: non_neg_integer()}).
-
-%%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
-        {nodelay,true}, % Send our requests immediately
-        {send_timeout_close,true}, % When the socket times out, close the connection
-        {delay_send,true}, % Scheduler should favor big batch requests
-        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
-        {reuseaddr,true}, % Reuse local port numbers
-        {keepalive,true}, % Keep our channel open
-        {tos,72}, % Deliver immediately
-        {active,false}]). % Retrieve data from socket upon request
 
 %%% The TCP options that should be copied from the listener to the acceptor
 -define(ACCEPTOR_TCP_OPTS, [nodelay,
@@ -74,7 +66,7 @@ init({Node}) ->
     ok = lager:info("function=init client_node=\"~s\"", [Node]),
     process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
-    case gen_tcp:listen(0, default_tcp_opts()) of
+    case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
             ok = lager:info("function=init event=listener_started_successfully client_node=\"~s\"", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
@@ -171,28 +163,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-otp_release() ->
-    try
-        erlang:list_to_integer(erlang:system_info(otp_release))
-    catch
-        error:badarg ->
-            %% Before Erlang 17, R was included in the OTP release,
-            %% which would make the list_to_integer call fail.
-            %% Since we only use this function to test the availability
-            %% of the show_econnreset feature, 16 is good enough.
-            16
-    end.
-
-default_tcp_opts() ->
-    case otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
-        false ->
-            ?DEFAULT_TCP_OPTS
-    end.
 
 acceptor_tcp_opts() ->
-    case otp_release() >= 18 of
+    case gen_rpc_helper:otp_release() >= 18 of
         true ->
             [show_econnreset|?ACCEPTOR_TCP_OPTS];
         false ->

@@ -23,7 +23,7 @@
         client_node :: atom()}).
 
 %%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
+-define(ACCEPTOR_DEFAULT_TCP_OPTS, [binary, {packet,4},
         {active,once}]). % Retrieve data from socket upon request
 
 %%% Server functions
@@ -79,7 +79,7 @@ waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) -
             % Now we own the socket
             ok = lager:debug("function=waiting_for_socket event=acquiring_socket_ownership socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
                              [Socket, ClientIp, Ip]),
-            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|default_tcp_opts()]),
+            ok = inet:setopts(Socket, [{send_timeout, State#state.send_timeout}|gen_rpc_helper:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
             {next_state, waiting_for_data, State#state{socket=Socket}}
     end.
 
@@ -184,25 +184,6 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-otp_release() ->
-    try
-        erlang:list_to_integer(erlang:system_info(otp_release))
-    catch
-        error:badarg ->
-            %% Before Erlang 17, R was included in the OTP release,
-            %% which would make the list_to_integer call fail.
-            %% Since we only use this function to test the availability
-            %% of the show_econnreset feature, 16 is good enough.
-            16
-    end.
-
-default_tcp_opts() ->
-    case otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
-        false ->
-            ?DEFAULT_TCP_OPTS
-    end.
 
 make_process_name(Node) ->
     NodeBin = atom_to_binary(Node, latin1),

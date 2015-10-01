@@ -22,17 +22,6 @@
         receive_timeout :: non_neg_integer(),
         inactivity_timeout :: non_neg_integer() | infinity}).
 
-%%% Default TCP options
--define(DEFAULT_TCP_OPTS, [binary, {packet,4},
-        {nodelay,true}, % Send our requests immediately
-        {send_timeout_close,true}, % When the socket times out, close the connection
-        {delay_send,true}, % Scheduler should favor big batch requests
-        {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
-        {reuseaddr,true}, % Reuse local port numbers
-        {keepalive,true}, % Keep our channel open
-        {tos,72}, % Deliver immediately
-        {active,false}]). % Retrieve data from socket upon request
-
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
 
@@ -152,7 +141,7 @@ init({Node}) ->
             Address = get_remote_node_ip(Node),
             ok = lager:debug("function=init event=remote_server_started_successfully server_node=\"~s\" server_ip=\"~p:~B\"",
                              [Node, Address, Port]),
-            case gen_tcp:connect(Address, Port, default_tcp_opts(), ConnTO) of
+            case gen_tcp:connect(Address, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("function=init event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
                                      [Node, Address, Port]),
@@ -311,25 +300,6 @@ terminate(_Reason, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-otp_release() ->
-    try
-        erlang:list_to_integer(erlang:system_info(otp_release))
-    catch
-        error:badarg ->
-            %% Before Erlang 17, R was included in the OTP release,
-            %% which would make the list_to_integer call fail.
-            %% Since we only use this function to test the availability
-            %% of the show_econnreset feature, 16 is good enough.
-            16
-    end.
-
-default_tcp_opts() ->
-    case otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|?DEFAULT_TCP_OPTS];
-        false ->
-            ?DEFAULT_TCP_OPTS
-    end.
 
 %% For loopback communication and performance testing
 get_remote_node_ip(Node) when Node =:= node() ->
