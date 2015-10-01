@@ -35,7 +35,7 @@ stop() ->
     gen_server:call(?MODULE, stop).
 
 start_client(Node) when is_atom(Node) ->
-    gen_server:call(?MODULE, {start_client,Node}).
+    gen_server:call(?MODULE, {start_client,Node}, infinity).
 
 %%% ===================================================
 %%% Behaviour callbacks

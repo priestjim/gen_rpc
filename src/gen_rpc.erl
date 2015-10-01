@@ -8,7 +8,16 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Library interface
--export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5]).
+-export([call/3,
+        call/4,
+        call/5,
+        call/6,
+        cast/3,
+        cast/4,
+        cast/5,
+        safe_cast/3,
+        safe_cast/4,
+        safe_cast/5]).
 
 %%% ===================================================
 %%% Library interface
@@ -31,14 +40,26 @@ call(Node, M, F, A, RecvTO) ->
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
--spec cast(Node::node(), M::module(), F::function()) -> 'ok'.
+-spec cast(Node::node(), M::module(), F::function()) -> 'true'.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
--spec cast(Node::node(), M::module(), F::function(), A::list()) -> 'ok'.
+-spec cast(Node::node(), M::module(), F::function(), A::list()) -> 'true'.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
--spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'ok'.
+-spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true'.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
+
+-spec safe_cast(Node::node(), M::module(), F::function()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+safe_cast(Node, M, F) ->
+    gen_rpc_client:safe_cast(Node, M, F).
+
+-spec safe_cast(Node::node(), M::module(), F::function(), A::list()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+safe_cast(Node, M, F, A) ->
+    gen_rpc_client:safe_cast(Node, M, F, A).
+
+-spec safe_cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true' | {badrpc, atom()} | {badtcp | atom()}.
+safe_cast(Node, M, F, A, SendTO) ->
+    gen_rpc_client:safe_cast(Node, M, F, A, SendTO).

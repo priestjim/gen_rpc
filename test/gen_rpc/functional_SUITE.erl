@@ -26,6 +26,12 @@
         cast_anonymous_function/1,
         cast_mfa_undef/1,
         cast_mfa_exit/1,
+        cast_inexistent_node/1,
+        safe_cast/1,
+        safe_cast_anonymous_function/1,
+        safe_cast_mfa_undef/1,
+        safe_cast_mfa_exit/1,
+        safe_cast_inexistent_node/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
         remote_node_call/1]).
@@ -144,19 +150,43 @@ interleaved_call(_Config) ->
 
 cast(_Config) ->
     ok = ct:pal("Testing [cast]"),
-    ok = gen_rpc:cast(?NODE, erlang, timestamp).
+    true = gen_rpc:cast(?NODE, erlang, timestamp).
 
 cast_anonymous_function(_Config) ->
     ok = ct:pal("Testing [cast_anonymous_function]"),
-    ok = gen_rpc:cast(?NODE, erlang, apply, [ fun() -> os:timestamp() end, []]).
+    true = gen_rpc:cast(?NODE, erlang, apply, [fun() -> os:timestamp() end, []]).
 
 cast_mfa_undef(_Config) ->
     ok = ct:pal("Testing [cast_mfa_undef]"),
-    ok = gen_rpc:cast(?NODE, os, timestamp_undef, []).
+    true = gen_rpc:cast(?NODE, os, timestamp_undef, []).
 
 cast_mfa_exit(_Config) ->
     ok = ct:pal("Testing [cast_mfa_exit]"),
-    ok = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die)  end, []]).
+    true = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die) end, []]).
+
+cast_inexistent_node(_Config) ->
+    ok = ct:pal("Testing [cast_inexistent_node]"),
+    true = gen_rpc:cast(?FAKE_NODE, os, timestamp, []).
+
+safe_cast(_Config) ->
+    ok = ct:pal("Testing [safe_cast]"),
+    true = gen_rpc:safe_cast(?NODE, erlang, timestamp).
+
+safe_cast_anonymous_function(_Config) ->
+    ok = ct:pal("Testing [safe_cast_anonymous_function]"),
+    true = gen_rpc:safe_cast(?NODE, erlang, apply, [fun() -> os:timestamp() end, []]).
+
+safe_cast_mfa_undef(_Config) ->
+    ok = ct:pal("Testing [safe_cast_mfa_undef]"),
+    true = gen_rpc:safe_cast(?NODE, os, timestamp_undef, []).
+
+safe_cast_mfa_exit(_Config) ->
+    ok = ct:pal("Testing [safe_cast_mfa_exit]"),
+    true = gen_rpc:safe_cast(?NODE, erlang, apply, [fun() -> exit(die) end, []]).
+
+safe_cast_inexistent_node(_Config) ->
+    ok = ct:pal("Testing [safe_cast_inexistent_node]"),
+    {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, []).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
