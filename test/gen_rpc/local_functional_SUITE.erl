@@ -37,8 +37,7 @@
         safe_cast_inexistent_node/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
-        remote_node_call/1,
-        remote_node_call_lamda/1]).
+        remote_node_call/1]).
 
 %%% Auxiliary functions for test cases
 -export([interleaved_call_proc/3, interleaved_call_executor/1]).
@@ -227,11 +226,6 @@ server_inactivity_timeout(_Config) ->
 remote_node_call(_Config) ->
     ok = ct:pal("Testing [remote_node_call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
-
-remote_node_call_lamda(_Config) ->
-    ok = ct:pal("Testing [remote_node_call_lamda]"),
-    {_,"\"call_anonymous_function\""} = gen_rpc:call(?SLAVE, erlang, apply,[fun(A) -> {self(), io_lib:print(A)} end,
-                                                     ["call_anonymous_function"]]).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
