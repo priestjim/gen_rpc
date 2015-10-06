@@ -35,8 +35,7 @@ stop(_State) ->
 %%% ===================================================
 -spec start() -> 'ok' | {'error', term()}.
 start() ->
-    application:ensure_all_started(?APP),
-    start(normal, []).
+    application:start(?APP).
 
 -spec stop() -> 'ok' | {'error', term()}.
 stop() ->
