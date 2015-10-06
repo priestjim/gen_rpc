@@ -50,20 +50,24 @@ stop(Node) when is_atom(Node) ->
 %%% Server functions
 %%% ===================================================
 %% Simple server call with no args and default timeout values
+-spec call(Node::node(), M::module(), F::atom()|function()) -> term().
 call(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
     call(Node, M, F, [], undefined, undefined).
 
 %% Simple server call with args and default timeout values
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list()) -> term().
 call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     call(Node, M, F, A, undefined, undefined).
 
 %% Simple server call with custom receive timeout value
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout()) -> term().
 call(Node, M, F, A, RecvTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  is_integer(RecvTO) orelse RecvTO =:= infinity ->
     call(Node, M, F, A, RecvTO, undefined).
 
 %% Simple server call with custom receive and send timeout values
 %% This is the function that all of the above call
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout(), SendTO::timeout()) -> term().
 call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse is_integer(RecvTO) orelse RecvTO =:= infinity,
                                          SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
@@ -85,15 +89,18 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
     end.
 
 %% Simple server cast with no args and default timeout values
+-spec cast(Node::node(), M::module(), F::atom()|function()) -> 'true'.
 cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
     cast(Node, M, F, [], undefined).
 
 %% Simple server cast with args and default timeout values
+-spec cast(Node::node(), M::module(), F::atom()|function(), A::list()) -> 'true'.
 cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     cast(Node, M, F, A, undefined).
 
 %% Simple server cast with custom send timeout value
 %% This is the function that all of the above casts call
+-spec cast(Node::node(), M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'true'.
 cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:
@@ -118,15 +125,18 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     end.
 
 %% Safe server cast with no args and default timeout values
+-spec safe_cast(Node::node(), M::module(), F::atom()|function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
     safe_cast(Node, M, F, [], undefined).
 
 %% Safe server cast with args and default timeout values
+-spec safe_cast(Node::node(), M::module(), F::atom()|function(), A::list()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     safe_cast(Node, M, F, A, undefined).
 
 %% Safe server cast with custom send timeout value
 %% This is the function that all of the above casts call
+-spec safe_cast(Node::node(), M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:

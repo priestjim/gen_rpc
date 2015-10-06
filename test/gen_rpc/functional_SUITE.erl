@@ -20,17 +20,20 @@
         call_anonymous_undef/1,
         call_mfa_undef/1,
         call_mfa_exit/1,
+        call_mfa_throw/1,
         call_with_receive_timeout/1,
         interleaved_call/1,
         cast/1,
         cast_anonymous_function/1,
         cast_mfa_undef/1,
         cast_mfa_exit/1,
+        cast_mfa_throw/1,
         cast_inexistent_node/1,
         safe_cast/1,
         safe_cast_anonymous_function/1,
         safe_cast_mfa_undef/1,
         safe_cast_mfa_exit/1,
+        safe_cast_mfa_throw/1,
         safe_cast_inexistent_node/1,
         client_inactivity_timeout/1,
         server_inactivity_timeout/1,
@@ -118,17 +121,22 @@ call_anonymous_function(_Config) ->
 
 call_anonymous_undef(_Config) ->
     ok = ct:pal("Testing [call_anonymous_undef]"),
-    {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
+    {badrpc, {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
     ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_undef(_Config) ->
     ok = ct:pal("Testing [call_mfa_undef]"),
-    {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, os, timestamp_undef),
+    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?NODE, os, timestamp_undef),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_exit(_Config) ->
     ok = ct:pal("Testing [call_mfa_exit]"),
-    {'EXIT', die} = gen_rpc:call(?NODE, erlang, apply, [fun() -> exit(die) end, []]),
+    {badrpc, {'EXIT',die}} = gen_rpc:call(?NODE, erlang, exit, ['die']),
+    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
+
+call_mfa_throw(_Config) ->
+    ok = ct:pal("Testing [call_mfa_throw]"),
+    {badrpc, {'EXIT', 'throwme'}} = gen_rpc:call(?NODE, erlang, throw, ['throwme']),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
@@ -164,6 +172,10 @@ cast_mfa_exit(_Config) ->
     ok = ct:pal("Testing [cast_mfa_exit]"),
     true = gen_rpc:cast(?NODE, erlang, apply, [fun() -> exit(die) end, []]).
 
+cast_mfa_throw(_Config) ->
+    ok = ct:pal("Testing [cast_mfa_throw]"),
+    true = gen_rpc:cast(?NODE, erlang, throw, ['throwme']).
+
 cast_inexistent_node(_Config) ->
     ok = ct:pal("Testing [cast_inexistent_node]"),
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, []).
@@ -183,6 +195,10 @@ safe_cast_mfa_undef(_Config) ->
 safe_cast_mfa_exit(_Config) ->
     ok = ct:pal("Testing [safe_cast_mfa_exit]"),
     true = gen_rpc:safe_cast(?NODE, erlang, apply, [fun() -> exit(die) end, []]).
+
+safe_cast_mfa_throw(_Config) ->
+    ok = ct:pal("Testing [safe_cast_mfa_throw]"),
+    true = gen_rpc:safe_cast(?NODE, erlang, throw, ['throwme']).
 
 safe_cast_inexistent_node(_Config) ->
     ok = ct:pal("Testing [safe_cast_inexistent_node]"),
