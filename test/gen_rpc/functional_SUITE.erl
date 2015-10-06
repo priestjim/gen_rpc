@@ -118,17 +118,17 @@ call_anonymous_function(_Config) ->
 
 call_anonymous_undef(_Config) ->
     ok = ct:pal("Testing [call_anonymous_undef]"),
-    {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
+    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
     ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_undef(_Config) ->
     ok = ct:pal("Testing [call_mfa_undef]"),
-    {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}} = gen_rpc:call(?NODE, os, timestamp_undef),
+    {badrpc, {'EXIT',{undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?NODE, os, timestamp_undef),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_exit(_Config) ->
     ok = ct:pal("Testing [call_mfa_exit]"),
-    {'EXIT', die} = gen_rpc:call(?NODE, erlang, apply, [fun() -> exit(die) end, []]),
+    {badrpc, {'EXIT', die}} = gen_rpc:call(?NODE, erlang, apply, [fun() -> exit(die) end, []]),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
