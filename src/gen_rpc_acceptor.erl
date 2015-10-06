@@ -201,5 +201,6 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
                {'EXIT', _} = V -> {badrpc, V};
                Else -> Else
           end,
-    PacketBin = erlang:term_to_binary({WorkerPid, Ref, Ret}),    Parent ! {call_reply, PacketBin},
+    PacketBin = erlang:term_to_binary({WorkerPid, Ref, Ret}),
+    Parent ! {call_reply, PacketBin},
     ok.
