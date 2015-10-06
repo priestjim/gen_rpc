@@ -205,7 +205,7 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
           catch 
                throw:Term -> {badrpc, {'EXIT', Term}};
                exit:Reason -> {badrpc, {'EXIT', Reason}};
-               error:Reason -> {badrpc, {'EXIT', Reason, erlang:get_stacktrace()}}
+               error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
           end,
     PacketBin = erlang:term_to_binary({WorkerPid, Ref, Ret}),
     Parent ! {call_reply, PacketBin},
