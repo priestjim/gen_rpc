@@ -13,7 +13,15 @@
 
 %% Start target test erlang node
 start_target(Node)->
-    %% Stop if any node and start from a clean node  
-    net_kernel:stop(), 
-    net_kernel:start([Node, longnames]). 
+    %% Try to spin up net_kernel
+    case net_kernel:start([Node, longnames]) of
+        {ok, _} ->
+            {ok, {Node, started}};
+        {error,{already_started, _Pid}} ->
+            {ok, {Node, already_started}};
+        {error, Reason} ->
+            ok = ct:pal("function=start_target event=fail_start_target Reason=\"~p\"", [Reason]),
+            {error, Reason}
+    end
+    .
 
