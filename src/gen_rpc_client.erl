@@ -64,6 +64,11 @@ call(Node, M, F, A, RecvTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
 
 %% Simple server call with custom receive and send timeout values
 %% This is the function that all of the above call
+%% Target is itself. Sender/Receiver are the same guy.
+call(Node, M, F, A, Timeout, Timeout) when node() =:= Node, is_atom(M), is_atom(F), is_list(A),
+                                         Timeout =:= undefined orelse is_integer(Timeout) orelse Timeout =:= infinity ->
+    local_call(M,F,A);
+%% Target is a non local node
 call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse is_integer(RecvTO) orelse RecvTO =:= infinity,
                                          SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
@@ -94,6 +99,11 @@ cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
 
 %% Simple server cast with custom send timeout value
 %% This is the function that all of the above casts call
+%% Target is itself.
+cast(Node, M, F, A, undefined) when node() =:= Node, is_atom(F), is_list(A) ->
+    local_cast(M,F,A);
+cast(Node, M, F, A, infinity) when node() =:= Node, is_atom(F), is_list(A) ->
+    local_cast(M,F,A);
 cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:
@@ -127,6 +137,12 @@ safe_cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) 
 
 %% Safe server cast with custom send timeout value
 %% This is the function that all of the above casts call
+%% Target is itself
+safe_cast(Node, M, F, A, undefined) when node() =:= Node, is_atom(F), is_list(A) ->
+    local_cast(M,F,A);
+safe_cast(Node, M, F, A, infinity) when node() =:= Node, is_atom(F), is_list(A) ->
+    local_cast(M,F,A);
+%% Target is a non local node
 safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:
@@ -351,6 +367,19 @@ do_cast(PacketTuple, USendTO, Socket, Node, State) ->
             ok = lager:error("function=do_cast message=cast event=node_down socket=\"~p\"", [Socket]),
             {error, {badrpc,nodedown}}
     end.
+
+local_call(M, F, A) ->
+    try erlang:apply(M, F, A) 
+    catch 
+        throw:Term -> {badrpc, {'EXIT', Term}};
+        exit:Reason -> {badrpc, {'EXIT', Reason}};
+        error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
+    end.
+
+%% For cast. If target node is itself just spawn a process to execute.
+local_cast(M,F,A) ->
+    catch spawn(M, F, A),
+    true.
 
 %% For loopback communication and performance testing
 get_remote_node_ip(Node) when Node =:= node() ->

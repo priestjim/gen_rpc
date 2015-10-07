@@ -107,8 +107,8 @@ distclean: $(REBAR)
 	@$(REBAR) clean -a
 
 testclean:
+	@rm -fr _build/test && rm -rf ./test/*.beam
 	@find log/ct -maxdepth 1 -name ct_run* -type d -cmin +360 -exec rm -fr {} \;
-	@rm -fr _build/test
 
 epmd:
 	@pgrep epmd 2> /dev/null > /dev/null || epmd -daemon || true

@@ -24,42 +24,42 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
--spec call(Node::node(), M::module(), F::function()) -> term().
+-spec call(Node::node(), M::module(), F::atom()|function()) -> term() | {'badrpc', term()} | {'badtcp' | term()}.
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
 
--spec call(Node::node(), M::module(), F::function(), A::list()) -> term().
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list()) -> term() | {'badrpc', term()} | {'badtcp' | term()}.
 call(Node, M, F, A) ->
     gen_rpc_client:call(Node, M, F, A).
 
--spec call(Node::node(), M::module(), F::function(), A::list(), RecvTO::timeout()) -> term().
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout()) -> term() | {'badrpc', term()} | {'badtcp' | term()}.
 call(Node, M, F, A, RecvTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO).
 
--spec call(Node::node(), M::module(), F::function(), A::list(), RecvTO::timeout(), SendTO::timeout()) -> term().
+-spec call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout(), SendTO::timeout()) -> term() | {'badrpc', term()} | {'badtcp' | term()}.
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
--spec cast(Node::node(), M::module(), F::function()) -> 'true'.
+-spec cast(Node::node(), M::module(), F::atom()|function()) -> 'true'.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
--spec cast(Node::node(), M::module(), F::function(), A::list()) -> 'true'.
+-spec cast(Node::node(), M::module(), F::atom()|function(), A::list()) -> 'true'.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
--spec cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true'.
+-spec cast(Node::node(), M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'true'.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
--spec safe_cast(Node::node(), M::module(), F::function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
+-spec safe_cast(Node::node(), M::module(), F::atom()|function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F) ->
     gen_rpc_client:safe_cast(Node, M, F).
 
--spec safe_cast(Node::node(), M::module(), F::function(), A::list()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
+-spec safe_cast(Node::node(), M::module(), F::atom()|function(), A::list()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A) ->
     gen_rpc_client:safe_cast(Node, M, F, A).
 
--spec safe_cast(Node::node(), M::module(), F::function(), A::list(), SendTO::timeout()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
+-spec safe_cast(Node::node(), M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
