@@ -16,8 +16,6 @@
 %%% Testing functions
 -export([supervisor_black_box/1,
         call/1,
- %       call_anonymous_function/1,
- %       call_anonymous_undef/1,
         call_mfa_undef/1,
         call_mfa_exit/1,
         call_mfa_throw/1,
@@ -113,15 +111,6 @@ supervisor_black_box(_Config) ->
 call(_Config) ->
     ok = ct:pal("Testing [call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
-
-%call_anonymous_function(_Config) ->
-%    ok = ct:pal("Testing [call_anonymous_function] Lamda on rpc. Usupported."),
-%    {_,"\"call_anonymous_function\""} = gen_rpc:call(?SLAVE, erlang, apply,[fun(A) -> {self(), io_lib:print(A)} end,
-%                                                     ["call_anonymous_function"]]).
-%call_anonymous_undef(_Config) ->
-%    ok = ct:pal("Testing [call_anonymous_undef] Lamda on rpc. Unsupported."),
-%    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?SLAVE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
-%    ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_undef(_Config) ->
     ok = ct:pal("Testing [call_mfa_undef]"),
