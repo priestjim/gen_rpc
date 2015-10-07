@@ -132,7 +132,7 @@ call_mfa_exit(_Config) ->
 
 call_mfa_throw(_Config) ->
     ok = ct:pal("Testing [call_mfa_throw]"),
-    {badrpc, {'EXIT', 'throwXdown'}} = gen_rpc:call(?SLAVE, erlang, throw, ['throwXdown']),
+    'throwXdown' = gen_rpc:call(?SLAVE, erlang, throw, ['throwXdown']),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
