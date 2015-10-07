@@ -23,6 +23,8 @@
         {sync, log, none},
         {sasl, errlog_type, error},
         {sasl, error_logger_mf_dir, false},
+        {gen_rpc, connect_timeout, 500},
+        {gen_rpc, send_timeout, 500},
         {lager, colored, true},
         {lager, handlers, [
             {lager_console_backend, [info, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]},

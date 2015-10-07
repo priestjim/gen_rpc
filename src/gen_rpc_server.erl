@@ -153,7 +153,6 @@ handle_info(Msg, State) ->
 %% Terminate cleanly by closing the listening socket
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
-    (catch gen_tcp:close(Socket)),
     _Pid = erlang:spawn(gen_rpc_server_sup, stop_child, [self()]),
     ok.
 

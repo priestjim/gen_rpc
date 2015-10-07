@@ -84,9 +84,11 @@ init_per_testcase(_OtherTest, Config) ->
 
 end_per_testcase(client_inactivity_timeout, Config) ->
     ok = ?restart_application(),
+    ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     Config;
 end_per_testcase(server_inactivity_timeout, Config) ->
     ok = ?restart_application(),
+    ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
 end_per_testcase(remote_node_call, Config) ->
     ok = slave:stop(?SLAVE),
@@ -166,7 +168,7 @@ cast_mfa_exit(_Config) ->
 
 cast_inexistent_node(_Config) ->
     ok = ct:pal("Testing [cast_inexistent_node]"),
-    true = gen_rpc:cast(?FAKE_NODE, os, timestamp, []).
+    true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 safe_cast(_Config) ->
     ok = ct:pal("Testing [safe_cast]"),
@@ -186,7 +188,7 @@ safe_cast_mfa_exit(_Config) ->
 
 safe_cast_inexistent_node(_Config) ->
     ok = ct:pal("Testing [safe_cast_inexistent_node]"),
-    {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, []).
+    {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),

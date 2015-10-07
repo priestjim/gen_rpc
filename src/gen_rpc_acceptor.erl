@@ -177,7 +177,6 @@ terminate(_Reason, _StateName, #state{socket=undefined}) ->
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
     ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
-    (catch gen_tcp:close(Socket)),
     _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
     ok.
 

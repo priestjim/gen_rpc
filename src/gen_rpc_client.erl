@@ -315,7 +315,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
-    (catch gen_tcp:close(Socket)),
     _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
     ok.
 
@@ -374,13 +373,11 @@ call_worker(Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
         Else ->
             ok = lager:error("function=call_worker event=invalid_message_received call_reference=\"~p\" message=\"~p\"",
                              [Ref, Else]),
-            _Ign = gen_server:reply(Caller, {badrpc, invalid_message_received}),
-            exit({error, invalid_message_received})
+            _Ign = gen_server:reply(Caller, {badrpc, invalid_message_received})
     after
         Timeout ->
             ok = lager:notice("function=call_worker event=call_timeout call_reference=\"~p\"", [Ref]),
-            _Ign = gen_server:reply(Caller, {badrpc, timeout}),
-            exit({error, timeout})
+            _Ign = gen_server:reply(Caller, {badrpc, timeout})
     end.
 
 %% Merges user-define timeout values with state timeout values
