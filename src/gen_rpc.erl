@@ -58,15 +58,24 @@ cast(Node, M, F, A) ->
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
--spec eval_everywhere(M::module(), F::atom()|function()) -> 'true'.
+%% @doc Evaluates asynchronously apply(Module, Function) on all connected nodes including sender.
+%% The function returns immediately after sending request. No answers, warnings or errors are collected.
+%% It is fired and pray. 
+-spec eval_everywhere(M::module(), F::atom()|function()) -> 'abcast'.
 eval_everywhere(M, F) ->
     gen_rpc_client:eval_everywhere(M, F).
 
--spec eval_everywhere(M::module(), F::atom()|function(), A::list()) -> 'true'.
+%% @doc Evaluates asynchronously apply(Module, Function, Args) on all connected nodes including sender.
+%% The function returns immediately after sending request. No answers, warnings or errors are collected.
+%% It is fired and pray. 
+-spec eval_everywhere(M::module(), F::atom()|function(), A::list()) -> 'abcast'.
 eval_everywhere(M, F, A) ->
     gen_rpc_client:eval_everywhere(M, F, A).
 
--spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'true'.
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% The function returns immediately after sending request. No answers, warnings or errors are collected.
+%% It is fired and pray. 
+-spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'abcast'.
 eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A).
 
@@ -82,17 +91,21 @@ safe_cast(Node, M, F, A) ->
 safe_cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
 
+%% @doc Evaluates asynchronously apply(Module, Function) on all connected nodes including sender. 
+%% The function returns true or list of nodes that errored out.
 -spec safe_eval_everywhere(M::module(), F::atom()|function()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
 safe_eval_everywhere(M, F) ->
     gen_rpc_client:safe_eval_everywhere(M, F).
 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on all connected nodes including sender. 
+%% The function returns true or list of nodes that errored out.
 -spec safe_eval_everywhere(M::module(), F::atom()|function(), A::list()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
 safe_eval_everywhere(M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(M, F, A).
 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% The function returns true or list of nodes that errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
 safe_eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A).
-
-
 

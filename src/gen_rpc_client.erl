@@ -122,11 +122,11 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
 
 %% Evaluate Module:Function on implicit connected nodes.
 eval_everywhere(M, F) ->
-    eval_everywhere([nodes()], M, F, []). 
+    eval_everywhere([node() | nodes()], M, F, []). 
 
 %% Evaluate Module:Function:Arguments on implicit connected nodes.
 eval_everywhere(M, F, A) ->
-    eval_everywhere([nodes()], M, F, A).
+    eval_everywhere([node() | nodes()], M, F, A).
 
 %% Evaluate Module:Function:Arguments on custom list of nodes.
 eval_everywhere(Nodes, M, F, A) ->
@@ -166,11 +166,11 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
 
 %% Safe evaluate Module:Function on implicit connected nodes.
 safe_eval_everywhere(M, F) ->
-    safe_eval_everywhere([nodes()], M, F, []). 
+    safe_eval_everywhere([node() | nodes()], M, F, []). 
 
 %% Safe evaluate Module:Function:Arguments on implicit connected nodes.
 safe_eval_everywhere(M, F, A) ->
-    safe_eval_everywhere([nodes()], M, F, A).
+    safe_eval_everywhere([node() | nodes()], M, F, A).
 
 %% Safe evaluate Module:Function:Arguments on custom list of nodes.
 safe_eval_everywhere(Nodes, M, F, A) ->
