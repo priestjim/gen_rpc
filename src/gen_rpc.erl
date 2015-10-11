@@ -93,19 +93,25 @@ safe_cast(Node, M, F, A, SendTO) ->
 
 %% @doc Evaluates asynchronously apply(Module, Function) on all connected nodes including sender. 
 %% The function returns true or list of nodes that errored out.
--spec safe_eval_everywhere(M::module(), F::atom()|function()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
+-spec safe_eval_everywhere(M::module(), F::atom()|function()) -> [{node(), 'true'  | {'badrpc', term()},  {'badtcp' | term()}}].
 safe_eval_everywhere(M, F) ->
     gen_rpc_client:safe_eval_everywhere(M, F).
 
 %% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on all connected nodes including sender. 
-%% The function returns true or list of nodes that errored out.
--spec safe_eval_everywhere(M::module(), F::atom()|function(), A::list()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
+%% The function returns list of nodes that succeeded or errored out.
+-spec safe_eval_everywhere(M::module(), F::atom()|function(), A::list()) ->  [{node(), 'true'  | {'badrpc', term()},  {'badtcp' | term()}}].
 safe_eval_everywhere(M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(M, F, A).
 
 %% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
-%% The function returns true or list of nodes that errored out.
--spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'true' | [{node(), {'badrpc', term()}}] | [{node(), {'badtcp' | term()}}].
+%% The function returns list of nodes that succeeded or errored out.
+-spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) ->  [{node(), 'true'  | {'badrpc', term()},  {'badtcp' | term()}}].
 safe_eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A).
+
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% The function returns list of that succeeded or errored out.
+-spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list(), SendTO::timeout()) ->  [{node(), 'true'  | {'badrpc', term()},  {'badtcp' | term()}}].
+safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
+    gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A, SendTO).
 
