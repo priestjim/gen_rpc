@@ -28,6 +28,9 @@
 %%% FSM functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
 
+-export([eval_everywhere/2, eval_everywhere/3, eval_everywhere/4,
+         safe_eval_everywhere/2, safe_eval_everywhere/3, safe_eval_everywhere/4]).
+
 %%% Behaviour callbacks
 -export([init/1, handle_call/3, handle_cast/2,
         handle_info/2, terminate/2, code_change/3]).
@@ -117,6 +120,18 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
             true
     end.
 
+%% Evaluate Module:Function on implicit connected nodes.
+eval_everywhere(M, F) ->
+    eval_everywhere([nodes()], M, F, []). 
+
+%% Evaluate Module:Function:Arguments on implicit connected nodes.
+eval_everywhere(M, F, A) ->
+    eval_everywhere([nodes()], M, F, A).
+
+%% Evaluate Module:Function:Arguments on custom list of nodes.
+eval_everywhere(Nodes, M, F, A) ->
+    gen_rpc_client:eval_everywhere(Nodes, M, F, A).
+
 %% Safe server cast with no args and default timeout values
 safe_cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
     safe_cast(Node, M, F, [], undefined).
@@ -147,6 +162,20 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
             ok = lager:debug("function=safe_cast event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
             gen_server:call(Pid, {{cast,M,F,A},SendTO}, infinity)
     end.
+
+
+%% Safe evaluate Module:Function on implicit connected nodes.
+safe_eval_everywhere(M, F) ->
+    safe_eval_everywhere([nodes()], M, F, []). 
+
+%% Safe evaluate Module:Function:Arguments on implicit connected nodes.
+safe_eval_everywhere(M, F, A) ->
+    safe_eval_everywhere([nodes()], M, F, A).
+
+%% Safe evaluate Module:Function:Arguments on custom list of nodes.
+safe_eval_everywhere(Nodes, M, F, A) ->
+    gen_rpc_client:eval_everywhere(Nodes, M, F, A).
+
 
 %%% ===================================================
 %%% Behaviour callbacks
