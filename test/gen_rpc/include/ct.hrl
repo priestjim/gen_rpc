@@ -16,6 +16,7 @@
 -define(FAKE_NODE, 'fake_node@127.0.1.1').
 -define(SLAVE_IP, '127.0.0.1').
 -define(SLAVE_NAME, 'gen_rpc_slave').
+-define(SLAVE_NAME1, 'gen_rpc_slave1').
 
 %%% Application setup
 -define(set_application_environment(),

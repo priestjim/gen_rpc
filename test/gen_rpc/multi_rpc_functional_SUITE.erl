@@ -149,21 +149,22 @@ server_inactivity_timeout(_Config) ->
 %%% Auxiliary functions for test cases
 %%% ===================================================
 start_slaves() ->
-    ok = start_slave(?SLAVE),
-    ok = start_slave(?SLAVE1),
-    ok.
-start_slave(Name) ->
+    Pid = start_slave(?SLAVE_NAME, ?SLAVE),
+    Pid1 = start_slave(?SLAVE_NAME1, ?SLAVE1),
+    ok = ct:pal("Start Slave Pid=\"~p\", Pid1=\"~p \"", [Pid, Pid1]),
+    [Pid, Pid1].
+
+start_slave(Name, Node) ->
     %% Starting a slave node with Distributed Erlang
     {ok, _Slave} = slave:start(?SLAVE_IP, Name, "+K true"),
-    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
+    ok = rpc:call(Node, code, add_pathsz, [code:get_path()]),
     %% Start the application remotely
-    {ok, _SlaveApps} = rpc:call(Name, application, ensure_all_started, [gen_rpc]),
-    {module, dummy} = rpc:call(Name, code, ensure_loaded, [dummy]),
-    _Ign = rpc:call(Name, dummy, new, [os:timestamp()]),
-    ok.
+    {ok, _SlaveApps} = rpc:call(Node, application, ensure_all_started, [gen_rpc]),
+    {module, ?TESTSRV} = rpc:call(Node, code, ensure_loaded, [?TESTSRV]),
+    rpc:call(Name, ?TESTSRV, start_link, []).
 
 stop_slaves() ->
-    ok = slave:stop(?SLAVE),
-    ok = slave:stop(?SLAVE1),
-    ok.
+    ok = slave:stop(?SLAVE_NAME),
+    ok = slave:stop(?SLAVE_NAME1),
+    ok = ct:pal("Slaves stopped", []).
 
