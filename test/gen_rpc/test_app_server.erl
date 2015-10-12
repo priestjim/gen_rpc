@@ -20,6 +20,7 @@
 
 -record(state, {entry :: map()}).
 
+-define(log, ct:pal).
 -define(LogFmt(Func, Event), io_lib:format("module=\"~p\" function=\"~p\" event=\"~p\"",[?MODULE, Func, Event])).
 
 start_link() ->
@@ -31,56 +32,56 @@ start_link() ->
     start_link(Opts).
 
 start_link(Opts) ->
-    ok = ct:pal(?LogFmt('start_link', 'start_link')),
-    gen_server:start_link(Opts).
+    ok = ?log(?LogFmt('start_link', 'start_link')),
+    gen_server:start_link({local, node()}, ?MODULE, Opts, []).
 
 set(Data) ->
-    ok = ct:pal(?LogFmt('set', 'set_data')),
+    ok = ?log(?LogFmt('set', 'set_data')),
     gen_server:call('set', Data).  
 
 get()->
-    ok = ct:pal(?LogFmt('get', 'get_data')),
+    ok = ?log(?LogFmt('get', 'get_data')),
     gen_server:call('get').
 
 init(Opts) ->
-    ok = ct:pal(?LogFmt('init', 'init_state')),
+    ok = ?log(?LogFmt('init', 'init_state')),
     {ok, #state{entry=maps:from_list(Opts)}}.
 
 handle_call({'set', Data}, _From, State) ->
-    ok = ct:pal(?LogFmt('handle_call', 'set_data')),
+    ok = ?log(?LogFmt('handle_call', 'set_data')),
     State  = store_state(State, Data),
     {reply, {ok, 'set'}, State};
 handle_call('get', _From, State) ->
-    ok = ct:pal(?LogFmt('handle_call', 'get_query')),
+    ok = ?log(?LogFmt('handle_call', 'get_query')),
     {reply, {ok, State#state.entry, State}};
 handle_call(terminate, _From, State) ->
-    ok = ct:pal(?LogFmt('handle_call', 'terminate')),
+    ok = ?log(?LogFmt('handle_call', 'terminate')),
     {stop, normal, ok, State};
 handle_call(Unknown, _From, State) ->
-    ok = ct:pal(?LogFmt('handle_call', 'unknown_msg')),
+    ok = ?log(?LogFmt('handle_call', 'unknown_msg')),
     {reply, {error, {'unknown_msg', Unknown}, State}}.
 
 handle_cast({set, Data}, State) ->
-    ok = ct:pal(?LogFmt('handle_cast', 'set_data')),
+    ok = ?log(?LogFmt('handle_cast', 'set_data')),
     State  = store_state(State, Data),
     {noreply, State};
 handle_cast(_Msg, State) ->
-    ok = ct:pal(?LogFmt('handle_cast', 'unknown_msg')),
+    ok = ?log(?LogFmt('handle_cast', 'unknown_msg')),
     {noreply, State}.
 
 handle_info('EXIT', State) ->
-    ok = ct:pal(?LogFmt('handle_info', 'exit_signal')),
+    ok = ?log(?LogFmt('handle_info', 'exit_signal')),
     {noreply, State};
 handle_info(_Msg, State) ->
-    ok = ct:pal(?LogFmt('handle_info', 'unknown_msg')),
+    ok = ?log(?LogFmt('handle_info', 'unknown_msg')),
     {noreply, State}.
 
 terminate(_, _State) -> 
-    ok = ct:pal(?LogFmt('terminate', 'terminate')),
+    ok = ?log(?LogFmt('terminate', 'terminate')),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-    ok = ct:pal(?LogFmt('code_change', 'code_change')),
+    ok = ?log(?LogFmt('code_change', 'code_change')),
     {ok, State}.
 
 store_state(State, Data)->

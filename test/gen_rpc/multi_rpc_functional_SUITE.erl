@@ -23,6 +23,8 @@
         client_inactivity_timeout/1,
         server_inactivity_timeout/1]).
 
+-export([start_slaves/0, stop_slaves/0]).
+
 -define(TESTSRV, test_app_server).
 
 %%% ===================================================
@@ -54,17 +56,17 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = start_slaves(),
+    {ok, _Pids} = start_slaves(),
     ok = ?restart_application(),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     Config;
 init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = start_slaves(),
+    {ok, _Pids}  = start_slaves(),
     ok = ?restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
 init_per_testcase(_OtherTest, Config) ->
-    ok = start_slaves(),
+    {ok, _Pids} = start_slaves(),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
@@ -151,7 +153,7 @@ server_inactivity_timeout(_Config) ->
 start_slaves() ->
     Pid = start_slave(?SLAVE_NAME, ?SLAVE),
     Pid1 = start_slave(?SLAVE_NAME1, ?SLAVE1),
-    ok = ct:pal("Start Slave Pid=\"~p\", Pid1=\"~p \"", [Pid, Pid1]),
+    ok = ct:pal("Slaves started with pids [Pid=\"~p\", \"~p\"]", [Pid, Pid1]),
     [Pid, Pid1].
 
 start_slave(Name, Node) ->
@@ -161,10 +163,10 @@ start_slave(Name, Node) ->
     %% Start the application remotely
     {ok, _SlaveApps} = rpc:call(Node, application, ensure_all_started, [gen_rpc]),
     {module, ?TESTSRV} = rpc:call(Node, code, ensure_loaded, [?TESTSRV]),
-    rpc:call(Name, ?TESTSRV, start_link, []).
+    rpc:call(Node, ?TESTSRV, start_link, []).
 
 stop_slaves() ->
-    ok = slave:stop(?SLAVE_NAME),
-    ok = slave:stop(?SLAVE_NAME1),
+    ok = slave:stop(?SLAVE),
+    ok = slave:stop(?SLAVE1),
     ok = ct:pal("Slaves stopped", []).
 
