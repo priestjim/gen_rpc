@@ -12,6 +12,7 @@
 %%% Node definitions
 -define(NODE, 'gen_rpc_master@127.0.0.1').
 -define(SLAVE, 'gen_rpc_slave@127.0.0.1').
+-define(SLAVE1, 'gen_rpc_slave1@127.0.0.1').
 -define(FAKE_NODE, 'fake_node@127.0.1.1').
 -define(SLAVE_IP, '127.0.0.1').
 -define(SLAVE_NAME, 'gen_rpc_slave').

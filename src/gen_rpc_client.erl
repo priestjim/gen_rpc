@@ -28,8 +28,8 @@
 %%% FSM functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
 
--export([eval_everywhere/2, eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
-         safe_eval_everywhere/2, safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
+-export([eval_everywhere/4, eval_everywhere/5,
+         safe_eval_everywhere/4, safe_eval_everywhere/5]).
 
 %%% Behaviour callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -120,14 +120,6 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
             true
     end.
 
-%% Evaluate Module:Function on connected nodes including sender.
-eval_everywhere(M, F) ->
-    eval_everywhere([node() | nodes()], M, F, [], undefined). 
-
-%% Evaluate Module:Function:Arguments on connected nodes including sender.
-eval_everywhere(M, F, A) ->
-    eval_everywhere([node() | nodes()], M, F, A, undefined).
-
 %% Evaluate Module:Function:Arguments on connected nodes including sender. Custom sender timeout.
 eval_everywhere(M, F, A, SendTO) ->
     eval_everywhere([node() | nodes()], M, F, A, SendTO).
@@ -168,15 +160,6 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
             ok = lager:debug("function=safe_cast event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
             gen_server:call(Pid, {{cast,M,F,A},SendTO}, infinity)
     end.
-
-
-%% Safe evaluate Module:Function on implicit connected nodes.
-safe_eval_everywhere(M, F) ->
-    safe_eval_everywhere([node() | nodes()], M, F, [], undefined). 
-
-%% Safe evaluate Module:Function:Arguments on implicit connected nodes.
-safe_eval_everywhere(M, F, A) ->
-    safe_eval_everywhere([node() | nodes()], M, F, A, undefined).
 
 %% Safe evaluate Module:Function:Arguments on implicit connected nodes. Custom sender timeout.
 safe_eval_everywhere(M, F, A, SendTO) ->
