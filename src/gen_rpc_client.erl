@@ -130,7 +130,7 @@ eval_everywhere(Nodes, M, F, A) ->
 
 %% Evaluate Module:Function:Arguments on custom list of nodes.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
-    ok = lager:info("function=eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~s\"", [Nodes]),
+    ok = lager:debug("function=eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
     [cast(Node, M, F, A, SendTO) || Node <- Nodes],
     'abcast'.
 
@@ -176,7 +176,7 @@ safe_eval_everywhere(Nodes, M, F, A) ->
 
 %% Safe evaluate Module:Function:Arguments on custom list of nodes.
 safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
-    ok = lager:info("function=safe_eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~s\"", [Nodes]),
+    ok = lager:debug("function=safe_eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
     [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes].
 
 

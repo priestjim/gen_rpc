@@ -21,12 +21,10 @@
 
 -record(state, {entry :: map()}).
 
--define(log, io_lib:write).
--define(LogFmt(Func, Event), io_lib:format("module=\"~p\" function=\"~p\" event=\"~p\"",[?MODULE, Func, Event])).
-
 start_link() ->
     Opts = [{'id', node()}
             ,{'from', 0}
+            ,{'test_case', null}
             ,{'sent_time', 0}
             ,{'update_time', 0}
             ,{'data', <<"">>}],
@@ -58,14 +56,16 @@ ping() ->
 retrieve(_)-> retrieve().
 
 init(Opts) ->
-    {ok, #state{entry=maps:from_list(Opts)}}.
+    process_flag(trap_exit, true),
+    {ok, #state{entry=[maps:from_list(Opts)]}}.
 
 handle_call('ping', _From, State) ->
     %This message shows up in trace.
     {reply, {ok, 'pong'}, State};
 handle_call({'set', Data}, _From, State) ->
-    Payload = store_state(State#state.entry, Data),
-    {reply, {ok, 'set'}, State#state{entry = Payload}};
+    Payload = store_state(Data),
+    Payload0 = Payload ++ State#state.entry,
+    {reply, {ok, 'set'}, State#state{entry = Payload0}};
 handle_call('retrieve', _From, State) ->
     {reply, {ok, State#state.entry}, State};
 handle_call(terminate, _From, State) ->
@@ -73,9 +73,6 @@ handle_call(terminate, _From, State) ->
 handle_call(Unknown, _From, State) ->
     {reply, {error, {'unknown_msg', Unknown}, State}}.
 
-handle_cast({'set', Data}, State) ->
-    Payload = store_state(State#state.entry, Data),
-    {noreply, State#state{entry = Payload}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -88,12 +85,17 @@ terminate(_, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-store_state(Entry, Data)->
-    [{'from', From}, {'sent_time', SentTime}, {'data', Payload}] = Data,
-    Data0 = maps:put('from', From, Entry), 
-    Data1 = maps:put('sent_time', SentTime, Data0), 
-    Data2 = maps:put('update_time', os:timestamp(), Data1), 
-    maps:put('data', Payload, Data2).
+store_state(Data)->
+    [{'from', From}
+    ,{'test_case', Test}
+    ,{'sent_time', SentTime}
+    ,{'data', Payload}] = Data,
+    [{'id', node()}
+     ,{'from', From}
+     ,{'test_case', Test}
+     ,{'sent_time', SentTime}
+     ,{'update_time', erlang:monotonic_time()}
+     ,{'data', Payload}].
 
 make_process_name() ->
     NodeBin = atom_to_binary(node(), latin1),
