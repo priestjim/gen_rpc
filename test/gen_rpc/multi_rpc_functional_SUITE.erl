@@ -165,6 +165,7 @@ eval_everywhere_mfa_throw_on_nodes(_Config) ->
       catch 
            'EXIT':Reason -> Reason = {nocatch, 'throwXup'}
       end,
+    ok = ct:pal("Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node"),
     ok = ct:pal("Results from nodes: \"~p\" Replies=\"~p\"", [ConnectedNodes, Replies]).
 
 eval_everywhere_mfa_timeout_on_nodes(_Config) ->
@@ -173,6 +174,7 @@ eval_everywhere_mfa_timeout_on_nodes(_Config) ->
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     Replies = rpc:multicall(ConnectedNodes, 'test_app_server', 'retrieve', []),
     ok = check_result(Replies, [{'data', 'throwXup'}], ConnectedNodes),
+    ok = ct:pal("Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node"),
     ok = ct:pal("Results from nodes: \"~p\" Replies=\"~p\"", [ConnectedNodes, Replies]).
 
 safe_eval_everywhere_mfa_no_node(_Config) ->
@@ -236,6 +238,7 @@ safe_eval_everywhere_mfa_throw_on_nodes(_Config) ->
       catch 
            'EXIT':Reason -> Reason = {nocatch, 'throwXup'}
       end,
+    ok = ct:pal("Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node"),
     ok = ct:pal("Results from nodes: \"~p\" Replies=\"~p\"", [ConnectedNodes, Replies]).
 
 safe_eval_everywhere_mfa_timeout_on_nodes(_Config) ->
@@ -244,6 +247,7 @@ safe_eval_everywhere_mfa_timeout_on_nodes(_Config) ->
     [{?SLAVE,true}, {?SLAVE1,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     Replies = rpc:multicall(ConnectedNodes, 'test_app_server', 'retrieve', []),
     ok = check_result(Replies, [{'data', 'throwXup'}], ConnectedNodes),
+    ok = ct:pal("Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node"),
     ok = ct:pal("Results from nodes: \"~p\" Replies=\"~p\"", [ConnectedNodes, Replies]).
 
 client_inactivity_timeout(_Config) ->
