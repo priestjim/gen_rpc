@@ -29,6 +29,9 @@
         cast_mfa_exit/1,
         cast_mfa_throw/1,
         cast_inexistent_node/1,
+        pinfo_alive_process/1,
+        pinfo_dead_process/1,
+        pinfo_item/1,
         safe_cast/1,
         safe_cast_anonymous_function/1,
         safe_cast_mfa_undef/1,
@@ -182,6 +185,27 @@ cast_mfa_throw(_Config) ->
 cast_inexistent_node(_Config) ->
     ok = ct:pal("Testing [cast_inexistent_node]"),
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
+
+pinfo_alive_process(_Config) ->
+    ok = ct:pal("Testing [pinfo]"),
+    Pid = gen_rpc:call(?NODE, erlang, spawn, [fun() -> timer:sleep(100000) end]),
+    % If this process is alive when pinfo it, we should get non-empty list
+    true = erlang:is_process_alive(Pid),
+    [] =/= gen_rpc:pinfo(Pid).
+
+pinfo_dead_process(_Config) ->
+    ok = ct:pal("Testing [pinfo]"),
+    Pid = gen_rpc:call(?NODE, erlang, spawn, [fun() -> exit(normal) end]),
+    % If this process is dead when pinfo it, we should get undefined.
+    false = gen_rpc:call(?NODE, erlang, is_process_alive, [Pid]),
+    'undefined' = gen_rpc:pinfo(Pid).
+
+pinfo_item(_Config) ->
+    ok = ct:pal("Testing [pinfo_item]"),
+    Pid = gen_rpc:call(?NODE, erlang, spawn, [fun() -> timer:sleep(100000) end]),
+    % If this process is alive when pinfo it, we should get non-empty list
+    true = gen_rpc:call(?NODE, erlang, is_process_alive, [Pid]),
+    [{status,waiting}] = gen_rpc:pinfo(Pid, [status]).
 
 safe_cast(_Config) ->
     ok = ct:pal("Testing [safe_cast]"),

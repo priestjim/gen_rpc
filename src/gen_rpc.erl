@@ -15,6 +15,8 @@
         cast/3,
         cast/4,
         cast/5,
+        pinfo/1,
+        pinfo/2,
         safe_cast/3,
         safe_cast/4,
         safe_cast/5]).
@@ -51,6 +53,18 @@ cast(Node, M, F, A) ->
 -spec cast(Node::node(), M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'true'.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
+
+%% @doc Location transparent version of the BIF process_info/1.
+%%      
+-spec pinfo(Pid::pid()) -> [{Item::atom(), Info::term()}] | undefined.
+ pinfo(Pid) ->
+    call(node(Pid), erlang, process_info, [Pid]).
+
+%% @doc Location transparent version of the BIF process_info/2.
+%% 
+-spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
+ pinfo(Pid, Item) ->
+    call(node(Pid), erlang, process_info, [Pid, Item]).    
 
 -spec safe_cast(Node::node(), M::module(), F::atom()|function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F) ->
