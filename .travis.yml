@@ -16,6 +16,7 @@ script: "make test xref dialyzer"
 branches:
   only:
     - master
+    - develop
 notifications:
   email:
     - priestjim@gmail.com
