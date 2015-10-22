@@ -31,6 +31,8 @@
 -export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
          safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
 
+-export([transform_result/2]).
+
 %%% Behaviour callbacks
 -export([init/1, handle_call/3, handle_cast/2,
         handle_info/2, terminate/2, code_change/3]).
@@ -173,12 +175,11 @@ safe_eval_everywhere(Nodes, M, F) ->
 safe_eval_everywhere(Nodes, M, F, A) ->
     safe_eval_everywhere(Nodes, M, F, A, 'undefined').
 
-
 %% Safe evaluate Module:Function:Arguments on custom list of nodes.
 safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
     ok = lager:debug("function=safe_eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
-    [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes].
-
+    Ret = [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes],
+    transform_result(Ret, Nodes).
 
 %%% ===================================================
 %%% Behaviour callbacks
@@ -421,3 +422,17 @@ merge_timeout_values(SRecvTO, undefined, _SSendTO, USendTO) ->
     {SRecvTO, USendTO};
 merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
     {URecvTO, USendTO}.
+
+%% Transform result for safe_eval_everywhere to look like multicall
+transform_result(Result, Nodes) ->
+    GoodNodes = get_goodnodes(Result),
+    BadNodes = Nodes -- GoodNodes,
+    ok = lager:debug("function=transform_result good_nodes=\"~p\" bad_nodes=\"~p\"", [GoodNodes, BadNodes]),
+    case GoodNodes =/= [] of
+        true -> [true, BadNodes];
+        false -> BadNodes
+    end.
+
+get_goodnodes(Nodes) ->
+    N = lists:takewhile(fun(X) -> X =:= (catch {_A, true} = X) end, Nodes),
+    [ X || {X, _} <- N]. 

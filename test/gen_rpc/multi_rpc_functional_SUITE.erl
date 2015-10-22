@@ -123,19 +123,19 @@ eval_everywhere_mfa_one_node(_Config) ->
 
 eval_everywhere_mfa_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     Data = make_data('eval_everywhere_mfa_multiple_nodes'),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
 
 eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes_TO]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     Data = make_data('eval_everywhere_mfa_multiple_nodes_TO'),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
 
 eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_exit_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, exit, ['fatal']),
     % Nothing blows up on sender side after sending call to nothing
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
@@ -144,13 +144,13 @@ eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
 
 eval_everywhere_mfa_throw_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_throw_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
 eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_timeout_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
@@ -168,25 +168,25 @@ safe_eval_everywhere_mfa_one_node(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node]"),
     ConnectedNodes = [?SLAVE],
     Data = make_data('safe_eval_everywhere_mfa_one_node'),
-    [{?SLAVE ,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, ping),
-    [{?SLAVE ,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, ping),
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
 
 safe_eval_everywhere_mfa_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1, ?FAKE_NODE],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2, ?FAKE_NODE],
     Data = make_data('safe_eval_everywhere_mfa_multiple_nodes'),
-    [{?SLAVE,true}, {?SLAVE1,true},{?FAKE_NODE,{badrpc,nodedown}}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    [true, [?FAKE_NODE]] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
 
 safe_eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes_TO]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
     Data = make_data('safe_eval_everywhere_mfa_multiple_nodes_TO'),
-    [{?SLAVE,true}, {?SLAVE1,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
 
 safe_eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_exit_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
-    [{?SLAVE,true}, {?SLAVE1,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, exit, ['fatal']),
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, exit, ['fatal']),
     % Nothing blows up on sender side after sending call to the ether
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
@@ -194,14 +194,14 @@ safe_eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
 
 safe_eval_everywhere_mfa_throw_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_throw_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
-    [{?SLAVE,true}, {?SLAVE1,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
 safe_eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_timeout_multiple_nodes]"),
-    ConnectedNodes = [?SLAVE, ?SLAVE1],
-    [{?SLAVE,true}, {?SLAVE1,true}] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
+    ConnectedNodes = [?SLAVE1, ?SLAVE2],
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
 client_inactivity_timeout(_Config) ->
@@ -251,7 +251,7 @@ make_data(Test)->
     {_, _, Seed} =os:timestamp(),
     [{'from', node()}
      , {'test_case', Test}
-     , {'sent_time', Now}
+     , {'sent_time', Seed}
      , {'data', term_to_binary(crypto:rand_uniform(0, Seed))}].
 
 
