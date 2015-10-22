@@ -248,11 +248,11 @@ stop_slaves() ->
     ok = ct:pal("Slaves stopped").
 
 make_data(Test)->
-    Now = abs(erlang:monotonic_time()),
+    {_, _, Seed} =os:timestamp(),
     [{'from', node()}
      , {'test_case', Test}
      , {'sent_time', Now}
-     , {'data', term_to_binary(crypto:rand_uniform(0, Now))}].
+     , {'data', term_to_binary(crypto:rand_uniform(0, Seed))}].
 
 
 
