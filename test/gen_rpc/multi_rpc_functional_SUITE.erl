@@ -166,7 +166,7 @@ safe_eval_everywhere_mfa_no_node(_Config) ->
 
 safe_eval_everywhere_mfa_one_node(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node]"),
-    ConnectedNodes = [?SLAVE],
+    ConnectedNodes = [?SLAVE1],
     Data = make_data('safe_eval_everywhere_mfa_one_node'),
     [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, ping),
     [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
@@ -206,14 +206,14 @@ safe_eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE1, os, timestamp),
     ok = timer:sleep(600),
     %% Lookup the client named process, shouldn't be undefined. Rewrite/Remove test?
     undefined =:= whereis(?SLAVE).
 
 server_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [server_inactivity_timeout]"),
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE1, os, timestamp),
     ok = timer:sleep(600),
     %% Lookup the client named process, shouldn't be there
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
@@ -224,8 +224,8 @@ server_inactivity_timeout(_Config) ->
 %%% Auxiliary functions for test cases
 %%% ===================================================
 start_slaves() ->
-    ok = start_slave(?SLAVE_NAME, ?SLAVE),
     ok = start_slave(?SLAVE_NAME1, ?SLAVE1),
+    ok = start_slave(?SLAVE_NAME2, ?SLAVE2),
     ok = ct:pal("Slaves started"),
     ok.
 
@@ -240,7 +240,7 @@ start_slave(Name, Node) ->
     ok.
 
 stop_slaves() ->
-    Slaves = [?SLAVE, ?SLAVE1],
+    Slaves = [?SLAVE1, ?SLAVE2],
     [begin 
         %{ok, ok} = rpc:call(Node, ?TESTSRV, stop, []),
         ok = slave:stop(Node)
