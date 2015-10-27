@@ -9,7 +9,7 @@
 %%% CT Macros
 -include_lib("test/gen_rpc/include/ct.hrl").
 
--export([start_target/1]).
+-export([start_target/1, make_process_name/1, make_process_name/2, ping/1]).
 
 %% Start target test erlang node
 start_target(Node)->
@@ -22,6 +22,14 @@ start_target(Node)->
         {error, Reason} ->
             ok = ct:pal("function=start_target event=fail_start_target Reason=\"~p\"", [Reason]),
             {error, Reason}
-    end
-    .
+    end.
 
+make_process_name(Tag) -> make_process_name(node(), Tag).
+
+make_process_name(Node, Tag) when is_binary(Tag) ->
+    NodeBin = atom_to_binary(Node, latin1),
+    binary_to_atom(<<Tag/binary, NodeBin/binary>>, latin1).
+
+ping({Node, Process, Msg}) ->
+    ok = ct:pal("module=\"~p\" function=ping node=\"~p\" process=\"~p\" msg=\"~p\"",[?MODULE, Node, Process, Msg]),
+    {Process, Node} ! {'pong', {node(), Process, Msg}}.

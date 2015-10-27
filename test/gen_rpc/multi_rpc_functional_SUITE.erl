@@ -14,23 +14,23 @@
 -export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
 
 %%% Testing functions
--export([supervisor_black_box/1,
-        eval_everywhere_mfa_no_node/1,
-        eval_everywhere_mfa_one_node/1,
-        eval_everywhere_mfa_multiple_nodes/1,
-        eval_everywhere_mfa_multiple_nodes_TO/1,
-        eval_everywhere_mfa_exit_multiple_nodes/1,
-        eval_everywhere_mfa_throw_multiple_nodes/1,
-        eval_everywhere_mfa_timeout_multiple_nodes/1,
-        safe_eval_everywhere_mfa_no_node/1,
-        safe_eval_everywhere_mfa_one_node/1,
-        safe_eval_everywhere_mfa_multiple_nodes/1,
-        safe_eval_everywhere_mfa_multiple_nodes_TO/1,
-        safe_eval_everywhere_mfa_exit_multiple_nodes/1,
-        safe_eval_everywhere_mfa_throw_multiple_nodes/1,
-        safe_eval_everywhere_mfa_timeout_multiple_nodes/1,
-        client_inactivity_timeout/1,
-        server_inactivity_timeout/1]).
+-export([supervisor_black_box/1
+        ,eval_everywhere_mfa_no_node/1
+        ,eval_everywhere_mfa_one_node/1
+        ,eval_everywhere_mfa_multiple_nodes/1
+        ,eval_everywhere_mfa_multiple_nodes_TO/1
+        ,eval_everywhere_mfa_exit_multiple_nodes/1
+        ,eval_everywhere_mfa_throw_multiple_nodes/1
+        ,eval_everywhere_mfa_timeout_multiple_nodes/1
+        ,safe_eval_everywhere_mfa_no_node/1
+        ,safe_eval_everywhere_mfa_one_node/1
+        ,safe_eval_everywhere_mfa_multiple_nodes/1
+        ,safe_eval_everywhere_mfa_multiple_nodes_TO/1
+        ,safe_eval_everywhere_mfa_exit_multiple_nodes/1
+        ,safe_eval_everywhere_mfa_throw_multiple_nodes/1
+        ,safe_eval_everywhere_mfa_timeout_multiple_nodes/1
+        ,client_inactivity_timeout/1
+        ,server_inactivity_timeout/1]).
 
 -export([start_slaves/0, stop_slaves/0]).
 
@@ -107,31 +107,51 @@ supervisor_black_box(_Config) ->
 eval_everywhere_mfa_no_node(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_no_node]"),
     ConnectedNodes = [],
-    Data = make_data('eval_everywhere_mfa_no_node'),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'test_app_server', 'store', [Data]),  
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, whereis, [node()]),  
     % Nothing catastrophically on sender side after sending call to the ether.
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_client_sup)).
 
+%% Ping the target node with tagged msg. Target Node reply back with 
+%% tagged msg and its own identity. 
 eval_everywhere_mfa_one_node(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_one_node]"),
-    ConnectedNodes = [?SLAVE],
-    Data = make_data('eval_everywhere_mfa_one_node'),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, ping),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    ConnectedNodes = [?SLAVE1],
+    Msg = Name = 'evalmfa1', 
+    ok = clean_process(Name, 'normal'),
+    TestPid = self(),
+    Pid = spawn_listener(?SLAVE1, Name, TestPid, 1),
+    true = register(Name, Pid),
+    ok = ct:pal("Testing [eval_everywhere_mfa_one_node] Registered Listening Node"),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    {ok, ?SLAVE1, passed} = wait_for_reply(?SLAVE1),
+    ok.
 
 eval_everywhere_mfa_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
-    Data = make_data('eval_everywhere_mfa_multiple_nodes'),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    Msg = Name = 'evalmfamul', 
+    TestPid = self(),
+    ok = clean_process(Name, 'normal'),
+    Pid = spawn_listener2(?SLAVE1, ?SLAVE2, Name, TestPid, 2),
+    true = register(Name, Pid),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
+    ok.
 
 eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes_TO]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
-    Data = make_data('eval_everywhere_mfa_multiple_nodes_TO'),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    Msg = Name = 'evalmfamultiTO', 
+    TestPid = self(),
+    ok = clean_process(Name, 'normal'),
+    Pid = spawn_listener2(?SLAVE1, ?SLAVE2, Name, TestPid, 2),
+    true = register(Name, Pid),
+    SendTO = 10,
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}], SendTO),
+    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
+    ok.
 
 eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_exit_multiple_nodes]"),
@@ -157,8 +177,7 @@ eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
 safe_eval_everywhere_mfa_no_node(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_no_node]"),
     ConnectedNodes = [],
-    Data = make_data('safe_eval_everywhere_mfa_no_node'),
-    [] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'test_app_server', 'store', [Data]),  
+    [] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, whereis, [node()]),  
     % Nothing catastrophically blows up  on sender side after sending call to the ether.
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
@@ -167,21 +186,40 @@ safe_eval_everywhere_mfa_no_node(_Config) ->
 safe_eval_everywhere_mfa_one_node(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node]"),
     ConnectedNodes = [?SLAVE1],
-    Data = make_data('safe_eval_everywhere_mfa_one_node'),
-    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, ping),
-    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    Msg = Name = 'safeevalmfa1', 
+    ok = clean_process(Name, 'normal'),
+    TestPid = self(),
+    Pid = spawn_listener(?SLAVE1, Name, TestPid, 1),
+    true = register(Name, Pid),
+    ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node] Registered Listening Node"),
+    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    {ok, ?SLAVE1, passed} = wait_for_reply(?SLAVE1),
+    ok.
 
 safe_eval_everywhere_mfa_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2, ?FAKE_NODE],
-    Data = make_data('safe_eval_everywhere_mfa_multiple_nodes'),
-    [true, [?FAKE_NODE]] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    Msg = Name = 'safeevalmfamulti', 
+    TestPid = self(),
+    ok = clean_process(Name, 'normal'),
+    Pid = spawn_listener2(?SLAVE1, ?SLAVE2, Name, TestPid, 2),
+    true = register(Name, Pid),
+    [true, [?FAKE_NODE]] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
+    ok.
 
 safe_eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes_TO]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
-    Data = make_data('safe_eval_everywhere_mfa_multiple_nodes_TO'),
-    [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, test_app_server, store, [Data]).
+    Msg = Name = 'safeevalmfamultiTO', 
+    TestPid = self(),
+    ok = clean_process(Name, 'normal'),
+    Pid = spawn_listener2(?SLAVE1, ?SLAVE2, Name, TestPid, 2),
+    true = register(Name, Pid),
+    SendTO = 10,
+    [true,[]] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}], SendTO),
+    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
+    ok.
 
 safe_eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_exit_multiple_nodes]"),
@@ -235,24 +273,99 @@ start_slave(Name, Node) ->
     ok = rpc:call(Node, code, add_pathsz, [code:get_path()]),
     %% Start the application remotely
     {ok, _SlaveApps} = rpc:call(Node, application, ensure_all_started, [gen_rpc]),
-    {module, ?TESTSRV} = rpc:call(Node, code, ensure_loaded, [?TESTSRV]),
-    {ok, _Pid} = rpc:call(Node, ?TESTSRV, start_link, []),
+    {module, gen_rpc_test_helper} = rpc:call(Node, code, ensure_loaded, [gen_rpc_test_helper]),
     ok.
 
 stop_slaves() ->
     Slaves = [?SLAVE1, ?SLAVE2],
     [begin 
-        %{ok, ok} = rpc:call(Node, ?TESTSRV, stop, []),
         ok = slave:stop(Node)
      end || Node <- Slaves],
     ok = ct:pal("Slaves stopped").
 
-make_data(Test)->
-    {_, _, Seed} =os:timestamp(),
-    [{'from', node()}
-     , {'test_case', Test}
-     , {'sent_time', Seed}
-     , {'data', term_to_binary(crypto:rand_uniform(0, Seed))}].
+%% This is the middleman process listening for messages from slave nodes
+%% Then relay back to test case Pid for check.
+spawn_listener(_, _, _, Count) when Count =< 0-> ok;
+spawn_listener(Node, Name, TestPid, Count)->
+    spawn(fun() ->
+                receive 
+                       done -> {ok, done};
+                       {pong, {Node, _, Name}} ->
+                                ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node, Name]),
+                                TestPid ! {ok, Node, passed},
+                                spawn_listener(Node, Name, TestPid, Count-1);                                    
+                        Else -> ok = ct:pal("Unknown Message: \"~p\"", [Else]),
+                                TestPid ! Else
+                after
+                        10000 ->
+                                ok = ct:pal("pong timeout", []),
+                                {error, pong_timeout}
+                end
+          end).
+
+wait_for_reply(Node) ->
+    receive 
+        {ok, Node, passed} -> {ok, Node, passed};                                                                   
+        _Ign -> {error, _Ign}
+    after
+         5000 -> {error, timeout}
+    end.
+
+spawn_listener2(Node1, Node2, Name, TestPid, Count)->
+    spawn(fun() -> loop(Node1, Node2, Name, TestPid, Count) end).
+
+loop(_, _, _, _, Count) when Count =< 0 -> ok;
+loop(Node1, Node2, Name, TestPid, Count) ->
+          receive 
+                done -> {ok, done};
+                {pong, {Node1, _, Name}} ->
+                       ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node1, Name]),
+                       TestPid ! {ok, Node1, passed}, 
+                       loop(Node1, Node2, Name, TestPid, Count-1);
+                {pong, {Node2, _, Name}} ->
+                        ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node2, Name]),
+                        TestPid ! {ok, Node2, passed},
+                        loop(Node1, Node2, Name, TestPid, Count-1);                                     
+                Else -> ok = ct:pal("Unknown Message: \"~p\"", [Else]),
+                        TestPid ! Else,
+                        loop(Node1, Node2, Name, TestPid, Count)
+          after
+                5000 ->
+                        ok = ct:pal("pong timeout", []),
+                        {error, pong_timeout}
+          end.
+
+wait_for_reply(Node1, Node2) ->
+    {ok, Node1, passed} = receive 
+        {ok, Node1, passed} -> 
+                        ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node1]),
+                        {ok, Node1, passed} 
+    after
+         5000 -> {error, timeout}
+    end,
+
+    {ok, Node2, passed} = 
+    receive 
+        {ok, Node2, passed} -> 
+                        ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node2]),
+                       {ok, Node2, passed}; 
+        _Ign -> {error, _Ign}
+    after
+         10000 -> {error, timeout}
+    end,
+    {ok, passed} = receive 
+        Else -> {error, {unknown_msg, Else}}
+    after
+         0 -> {ok, passed}
+    end.
 
 
+clean_process(Name, Reason) ->
+    Pid = whereis(Name),
+    true = kill_it(Pid, Name, Reason),
+    ok.
 
+kill_it(undefined, _Name, _Reason) -> true;
+kill_it(Pid, Name, Reason) ->
+    true = exit(Pid, Reason),
+    true = unregister(Name).
