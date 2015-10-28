@@ -100,7 +100,7 @@ eval_everywhere_mfa_one_node(_Config) ->
     Msg = Name = 'evalmfa1', 
     ok = clean_process(Name, 'normal'),
     TestPid = self(),
-    Pid = spawn_listener(?SLAVE1, Name, TestPid, 1),
+    Pid = spawn_listener(?SLAVE1, Name, TestPid),
     true = register(Name, Pid),
     ok = ct:pal("Testing [eval_everywhere_mfa_one_node] Registered Listening Node"),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
@@ -168,7 +168,7 @@ safe_eval_everywhere_mfa_one_node(_Config) ->
     Msg = Name = 'safeevalmfa1', 
     ok = clean_process(Name, 'normal'),
     TestPid = self(),
-    Pid = spawn_listener(?SLAVE1, Name, TestPid, 1),
+    Pid = spawn_listener(?SLAVE1, Name, TestPid),
     true = register(Name, Pid),
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node] Registered Listening Node"),
     [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
@@ -248,15 +248,15 @@ stop_slaves() ->
 
 %% This is the middleman process listening for messages from slave nodes
 %% Then relay back to test case Pid for check.
-spawn_listener(_, _, _, Count) when Count =< 0-> ok;
-spawn_listener(Node, Name, TestPid, Count)->
+%spawn_listener(_, _, _, Count) when Count =< 0-> ok;
+spawn_listener(Node, Name, TestPid)->
     spawn(fun() ->
                 receive 
                        done -> {ok, done};
                        {pong, {Node, _, Name}} ->
                                 ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node, Name]),
-                                TestPid ! {ok, Node, passed},
-                                spawn_listener(Node, Name, TestPid, Count-1);                                    
+                                TestPid ! {ok, Node, passed};
+                                
                         Else -> ok = ct:pal("Unknown Message: \"~p\"", [Else]),
                                 TestPid ! Else
                 after
