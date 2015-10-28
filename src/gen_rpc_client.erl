@@ -425,14 +425,14 @@ merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
 
 %% Transform result for safe_eval_everywhere to look like multicall
 transform_result(Result, Nodes) ->
-    GoodNodes = get_goodnodes(Result),
-    BadNodes = Nodes -- GoodNodes,
+    BadNodes = get_badnodes(Result),
+    GoodNodes = Nodes -- BadNodes,
     ok = lager:debug("function=transform_result good_nodes=\"~p\" bad_nodes=\"~p\"", [GoodNodes, BadNodes]),
     case GoodNodes =/= [] of
         true -> [true, BadNodes];
         false -> BadNodes
     end.
 
-get_goodnodes(Nodes) ->
-    N = lists:takewhile(fun(X) -> X =:= (catch {_A, true} = X) end, Nodes),
-    [ X || {X, _} <- N]. 
+get_badnodes(Nodes) ->
+    [ X || {X, {_,_}} <- Nodes]. 
+
