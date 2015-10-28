@@ -279,27 +279,28 @@ spawn_listener2(Node1, Node2, Name, TestPid, Count)->
 
 loop(_, _, _, _, Count) when Count =< 0 -> ok;
 loop(Node1, Node2, Name, TestPid, Count) ->
-          receive 
-                done -> {ok, done};
-                {pong, {Node1, _, Name}} ->
-                       ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node1, Name]),
-                       TestPid ! {ok, Node1, passed}, 
-                       loop(Node1, Node2, Name, TestPid, Count-1);
-                {pong, {Node2, _, Name}} ->
-                        ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node2, Name]),
-                        TestPid ! {ok, Node2, passed},
-                        loop(Node1, Node2, Name, TestPid, Count-1);                                     
-                Else -> ok = ct:pal("Unknown Message: \"~p\"", [Else]),
-                        TestPid ! Else,
-                        loop(Node1, Node2, Name, TestPid, Count)
-          after
-                5000 ->
-                        ok = ct:pal("pong timeout", []),
-                        {error, pong_timeout}
-          end.
+    receive 
+        done -> {ok, done};
+        {pong, {Node1, _, Name}} ->
+                ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node1, Name]),
+                TestPid ! {ok, Node1, passed}, 
+                loop(Node1, Node2, Name, TestPid, Count-1);
+        {pong, {Node2, _, Name}} ->
+                ok = ct:pal("Receive pong from node=\"~p\" process=\"~p\"",[Node2, Name]),
+                TestPid ! {ok, Node2, passed},
+                loop(Node1, Node2, Name, TestPid, Count-1);                                     
+        Else -> ok = ct:pal("Unknown Message: \"~p\"", [Else]),
+                TestPid ! Else,
+                loop(Node1, Node2, Name, TestPid, Count)
+    after
+        5000 ->
+                ok = ct:pal("pong timeout", []),
+                {error, pong_timeout}
+    end.
 
 wait_for_reply(Node1, Node2) ->
-    {ok, Node1, passed} = receive 
+    {ok, Node1, passed} =
+    receive 
         {ok, Node1, passed} -> 
                         ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node1]),
                         {ok, Node1, passed} 
