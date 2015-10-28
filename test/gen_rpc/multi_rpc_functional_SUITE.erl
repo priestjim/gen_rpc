@@ -14,23 +14,21 @@
 -export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
 
 %%% Testing functions
--export([supervisor_black_box/1
-        ,eval_everywhere_mfa_no_node/1
-        ,eval_everywhere_mfa_one_node/1
-        ,eval_everywhere_mfa_multiple_nodes/1
-        ,eval_everywhere_mfa_multiple_nodes_TO/1
-        ,eval_everywhere_mfa_exit_multiple_nodes/1
-        ,eval_everywhere_mfa_throw_multiple_nodes/1
-        ,eval_everywhere_mfa_timeout_multiple_nodes/1
-        ,safe_eval_everywhere_mfa_no_node/1
-        ,safe_eval_everywhere_mfa_one_node/1
-        ,safe_eval_everywhere_mfa_multiple_nodes/1
-        ,safe_eval_everywhere_mfa_multiple_nodes_TO/1
-        ,safe_eval_everywhere_mfa_exit_multiple_nodes/1
-        ,safe_eval_everywhere_mfa_throw_multiple_nodes/1
-        ,safe_eval_everywhere_mfa_timeout_multiple_nodes/1
-        ,client_inactivity_timeout/1
-        ,server_inactivity_timeout/1]).
+-export([supervisor_black_box/1,
+         eval_everywhere_mfa_no_node/1,
+         eval_everywhere_mfa_one_node/1,
+         eval_everywhere_mfa_multiple_nodes/1,
+         eval_everywhere_mfa_multiple_nodes_timeout/1,
+         eval_everywhere_mfa_exit_multiple_nodes/1,
+         eval_everywhere_mfa_throw_multiple_nodes/1,
+         eval_everywhere_mfa_timeout_multiple_nodes/1,
+         safe_eval_everywhere_mfa_no_node/1,
+         safe_eval_everywhere_mfa_one_node/1,
+         safe_eval_everywhere_mfa_multiple_nodes/1,
+         safe_eval_everywhere_mfa_multiple_nodes_timeout/1,
+         safe_eval_everywhere_mfa_exit_multiple_nodes/1,
+         safe_eval_everywhere_mfa_throw_multiple_nodes/1,
+         safe_eval_everywhere_mfa_timeout_multiple_nodes/1]).
 
 -export([start_slaves/0, stop_slaves/0]).
 
@@ -64,30 +62,11 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = start_slaves(),
-    ok = ?restart_application(),
-    ok = application:set_env(?APP, client_inactivity_timeout, infinity),
-    Config;
-init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = start_slaves(),
-    ok = ?restart_application(),
-    ok = application:set_env(?APP, server_inactivity_timeout, infinity),
-    Config;
-init_per_testcase(_OtherTest, Config) ->
+init_per_testcase(_Test, Config) ->
     ok = start_slaves(),
     Config.
 
-end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = stop_slaves(),
-    ok = ?restart_application(),
-    Config;
-end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = stop_slaves(),
-    ok = ?restart_application(),
-    Config;
-
-end_per_testcase(_OtherTest, Config) ->
+end_per_testcase(_Test, Config) ->
     ok = stop_slaves(),
     Config.
 
@@ -140,8 +119,8 @@ eval_everywhere_mfa_multiple_nodes(_Config) ->
     {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
     ok.
 
-eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
-    ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes_TO]"),
+eval_everywhere_mfa_multiple_nodes_timeout(_Config) ->
+    ok = ct:pal("Testing [eval_everywhere_mfa_multiple_nodes_timeout]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
     Msg = Name = 'evalmfamultiTO', 
     TestPid = self(),
@@ -208,8 +187,8 @@ safe_eval_everywhere_mfa_multiple_nodes(_Config) ->
     {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE2),
     ok.
 
-safe_eval_everywhere_mfa_multiple_nodes_TO(_Config) ->
-    ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes_TO]"),
+safe_eval_everywhere_mfa_multiple_nodes_timeout(_Config) ->
+    ok = ct:pal("Testing [safe_eval_everywhere_mfa_multiple_nodes_timeout]"),
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
     Msg = Name = 'safeevalmfamultiTO', 
     TestPid = self(),
@@ -241,22 +220,6 @@ safe_eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
     ConnectedNodes = [?SLAVE1, ?SLAVE2],
     [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
-
-client_inactivity_timeout(_Config) ->
-    ok = ct:pal("Testing [client_inactivity_timeout]"),
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE1, os, timestamp),
-    ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be undefined. Rewrite/Remove test?
-    undefined =:= whereis(?SLAVE).
-
-server_inactivity_timeout(_Config) ->
-    ok = ct:pal("Testing [server_inactivity_timeout]"),
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE1, os, timestamp),
-    ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be there
-    [] = supervisor:which_children(gen_rpc_acceptor_sup),
-    %% The server supervisor should have no children
-    [] = supervisor:which_children(gen_rpc_server_sup).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
@@ -359,13 +322,11 @@ wait_for_reply(Node1, Node2) ->
          0 -> {ok, passed}
     end.
 
-
 clean_process(Name, Reason) ->
     Pid = whereis(Name),
-    true = kill_it(Pid, Name, Reason),
+    true = kill_it(Pid, Reason),
     ok.
 
-kill_it(undefined, _Name, _Reason) -> true;
-kill_it(Pid, Name, Reason) ->
-    true = exit(Pid, Reason),
-    true = unregister(Name).
+kill_it(undefined, _Reason) -> true;
+kill_it(Pid, Reason) ->
+    true = exit(Pid, Reason).
