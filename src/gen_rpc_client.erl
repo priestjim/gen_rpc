@@ -31,7 +31,7 @@
 -export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
          safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
 
--export([transform_result/2]).
+-export([pinfo/1, pinfo/2]).
 
 %%% Behaviour callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -135,6 +135,18 @@ eval_everywhere(Nodes, M, F, A, SendTO) ->
     ok = lager:debug("function=eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
     [cast(Node, M, F, A, SendTO) || Node <- Nodes],
     'abcast'.
+
+%% @doc Location transparent version of the BIF process_info/2.
+%% P
+-spec pinfo(Pid::pid()) -> [{Item::atom(), Info::term()}] | undefined.
+pinfo(Pid) when is_pid(Pid) ->
+    call(node(Pid), erlang, process_info, [Pid]).
+
+%% @doc Location transparent version of the BIF process_info/2.
+%% 
+-spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
+pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
+    call(node(Pid), erlang, process_info, [Pid, Item]).
 
 %% Safe server cast with no args and default timeout values
 safe_cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
