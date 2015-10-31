@@ -9,7 +9,7 @@
 
 -include("app.hrl").
 
--export([otp_release/0, default_tcp_opts/1]).
+-export([otp_release/0, default_tcp_opts/1, make_process_name/2]).
 
 -spec otp_release() -> integer().
 otp_release() ->
@@ -33,4 +33,8 @@ default_tcp_opts(DefaultTcpOpts) ->
             DefaultTcpOpts
     end.
 
+-spec make_process_name(binary(), node()) -> atom().
+make_process_name(Prefix, Node) when is_binary(Prefix), is_atom(Node)->
+    NodeBin = atom_to_binary(Node, latin1),
+    binary_to_atom( <<Prefix/binary, NodeBin/binary>>, latin1).
 
