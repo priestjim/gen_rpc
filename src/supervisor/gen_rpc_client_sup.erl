@@ -27,10 +27,12 @@ start_child(Node) when is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_client server_node=\"~s\"", [Node]),
     supervisor:start_child(?MODULE, [Node]).
 
--spec stop_child(Pid::pid()) ->  'ok' | {'error','not_found' | 'simple_one_for_one'}.
+-spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("function=stop_child event=stopping_client client_pid=\"~p\"", [Pid]),
-    supervisor:terminate_child(?MODULE, Pid).
+    _ = supervisor:terminate_child(?MODULE, Pid),
+    _ = supervisor:delete_child(?MODULE, Pid),
+    ok.
 
 %%% ===================================================
 %%% Supervisor callbacks
