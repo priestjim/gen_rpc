@@ -26,9 +26,12 @@ start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_acceptor client_ip=\"~p\" client_node=\"~s\"", [ClientIp, Node]),
     supervisor:start_child(?MODULE, [ClientIp,Node]).
 
+-spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("function=stop_child event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
-    supervisor:terminate_child(?MODULE, Pid).
+    _ = supervisor:terminate_child(?MODULE, Pid),
+    _ = supervisor:delete_child(?MODULE, Pid),
+    ok.
 
 %%% ===================================================
 %%% Supervisor callbacks
