@@ -31,10 +31,13 @@ start_child(Node) when is_atom(Node) ->
     {ok, Port}.
 
 %% Terminate and unregister a child server
--spec stop_child(Pid::pid()) -> 'ok' | {'error','not_found' | 'simple_one_for_one'}.
+-spec stop_child(Pid::pid()) -> 'ok'.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("function=stop_child event=stopping_server server_pid=\"~p\"", [Pid]),
-    supervisor:terminate_child(?MODULE, Pid).
+    _ = supervisor:terminate_child(?MODULE, Pid),
+    _ = supervisor:delete_child(?MODULE, Pid),
+    ok.
+
 
 %%% ===================================================
 %%% Supervisor callbacks
