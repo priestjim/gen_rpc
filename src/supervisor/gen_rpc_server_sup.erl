@@ -26,7 +26,16 @@ start_link() ->
 -spec start_child(Node::node()) -> {'ok', inet:port_number()} | {ok, _}.
 start_child(Node) when is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_server client_node=\"~s\"", [Node]),
-    {ok, Pid} = supervisor:start_child(?MODULE, [Node]),
+    {ok, Pid} = case supervisor:start_child(?MODULE, [Node]) of
+        {error, {already_started, CPid}} ->
+            %% If we've already started the child, terminate it and start anew
+            ok = stop_child(CPid),
+            supervisor:start_child(?MODULE, [Node]);
+        {error, OtherError} ->
+            {error, OtherError};
+        {ok, TPid} ->
+            {ok, TPid}
+    end,
     {ok, Port} = gen_rpc_server:get_port(Pid),
     {ok, Port}.
 
@@ -34,6 +43,7 @@ start_child(Node) when is_atom(Node) ->
 -spec stop_child(Pid::pid()) -> 'ok'.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("function=stop_child event=stopping_server server_pid=\"~p\"", [Pid]),
+    %% Terminate the acceptor child first and then
     _ = supervisor:terminate_child(?MODULE, Pid),
     _ = supervisor:delete_child(?MODULE, Pid),
     ok.
@@ -44,5 +54,5 @@ stop_child(Pid) when is_pid(Pid) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_server, {gen_rpc_server,start_link,[]}, transient, 5000, worker, [gen_rpc_server]}
+        {gen_rpc_server, {gen_rpc_server,start_link,[]}, temporary, 5000, worker, [gen_rpc_server]}
     ]}}.
