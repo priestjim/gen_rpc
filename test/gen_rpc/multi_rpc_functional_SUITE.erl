@@ -299,29 +299,26 @@ loop(Node1, Node2, Name, TestPid, Count) ->
     end.
 
 wait_for_reply(Node1, Node2) ->
-    {ok, Node1, passed} =
+    wait_for_reply(Node1, Node2, 0).
+       
+wait_for_reply(_Node1, _Node2, 2) -> {ok,passed};
+wait_for_reply(Node1, Node2, Acc) ->
+    {ok, passed} =
     receive 
         {ok, Node1, passed} -> 
                         ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node1]),
-                        {ok, Node1, passed} 
-    after
-         5000 -> {error, timeout}
-    end,
-
-    {ok, Node2, passed} = 
-    receive 
+                        wait_for_reply(Node1, Node2, increment(?SLAVE1, Acc));
         {ok, Node2, passed} -> 
                         ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node2]),
-                       {ok, Node2, passed}; 
-        _Ign -> {error, _Ign}
+                        wait_for_reply(Node1, Node2, increment(?SLAVE2, Acc));
+        Else ->  ok = ct:pal("function=wait_for_reply event_unkn0wn_msg=\"~p\"", [Else]),
+                 wait_for_reply(Node1, Node2, Acc)
     after
-         10000 -> {error, timeout}
-    end,
-    {ok, passed} = receive 
-        Else -> {error, {unknown_msg, Else}}
-    after
-         0 -> {ok, passed}
+         10000 -> 
+                 receive M -> {error, {msg_too_late, M}} end
     end.
+
+increment(_Node, Acc) -> Acc+1.
 
 clean_process(Name, Reason) ->
     Pid = whereis(Name),
