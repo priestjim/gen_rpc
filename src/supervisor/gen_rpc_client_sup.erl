@@ -25,7 +25,16 @@ start_link() ->
 -spec start_child(Node::node()) ->  supervisor:startchild_ret().
 start_child(Node) when is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_client server_node=\"~s\"", [Node]),
-    supervisor:start_child(?MODULE, [Node]).
+    case supervisor:start_child(?MODULE, [Node]) of
+        {error, {already_started, CPid}} ->
+            %% If we've already started the child, terminate it and start anew
+            ok = stop_child(CPid),
+            supervisor:start_child(?MODULE, [Node]);
+        {error, OtherError} ->
+            {error, OtherError};
+        {ok, Pid} ->
+            {ok, Pid}
+    end.
 
 -spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
@@ -39,5 +48,5 @@ stop_child(Pid) when is_pid(Pid) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_client, {gen_rpc_client,start_link,[]}, transient, 5000, worker, [gen_rpc_client]}
+        {gen_rpc_client, {gen_rpc_client,start_link,[]}, temporary, 5000, worker, [gen_rpc_client]}
     ]}}.
