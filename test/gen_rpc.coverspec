@@ -1,5 +1,6 @@
 {nodes, ['gen_rpc_master@127.0.0.1', 'gen_rpc_slave@127.0.0.1']}.
 {level, details}.
+{export, "log/all.coverdata"}.
 {incl_mods, [gen_rpc_acceptor,
     gen_rpc_sup,
     gen_rpc_client_sup,

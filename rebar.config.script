@@ -1,0 +1,12 @@
+case os:getenv("TRAVIS") of
+  "true" ->
+    JobId   = os:getenv("TRAVIS_JOB_ID"),
+    CONFIG1 = lists:keystore(coveralls_service_job_id, 1, CONFIG, {coveralls_service_job_id, JobId}),
+    code:is_loaded(rebar3) =:= false andalso code:load_file(rebar3),
+    case erlang:function_exported(rebar3, version, 0) of
+      false -> lists:keystore(plugins, 1, CONFIG1, {plugins, [rebar_coveralls]});
+      true  -> CONFIG1
+    end;
+  _      ->
+    CONFIG
+end.

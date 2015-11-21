@@ -6,15 +6,16 @@
 # all: 			rebar3 as dev do compile
 # shell:		rebar3 as dev do shell
 # clean: 		rebar3 as dev do clean
-# distclean: 	rebar3 as dev do clean -a
-#               and explicitly delete other build artifacts
+# distclean: 	 	rebar3 as dev do clean -a
+#                	and explicitly delete other build artifacts
 # test: 		rebar3 as test do ct -v, cover
-# dialyzer: 	rebar3 as test do dialyzer
+# coverage-report: 	send coverage to coverall.io
+# dialyzer: 	 	rebar3 as test do dialyzer
 # xref:			rebar3 as dev do xref
 # dist: 		rebar3 as test do compile, ct -v, xref, dialyzer, cover
 # spec: 		Runs typer to generate source code specs
 # rebar: 		Downloads a precompiled rebar3 binary and places it inside the project. The rebar binary is .gitignored.
-#				This step is always run first on build targets.
+#			This step is always run first on build targets.
 # tags:			Builds Emacs tags file
 # epmd:			Runs the Erlang port mapper daemon, required for running the app and tests
 #
@@ -25,7 +26,7 @@
 .DEFAULT_GOAL := all
 
 # Build targets
-.PHONY: all test dialyzer xref spec dist
+.PHONY: all test dialyzer xref spec dist coverage-report
 
 # Run targets
 .PHONY: shell
@@ -64,6 +65,11 @@ REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 
 PLT_FILE = $(CURDIR)/_plt/*plt
 
+ifeq ($(USER),travis)
+COVERDATADIR = $(CURDIR)/log/ct
+ECOVERALL = $(CURDIR)/_build/test/lib/*/ebin
+endif
+
 # =============================================================================
 # Build targets
 # =============================================================================
@@ -85,6 +91,9 @@ spec: dialyzer
 
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
+
+coverage-report: $(shell ls -1rt `find $(COVERDATADIR) -type f -name \*.coverdata 2>/dev/null` | tail -n1)
+	$(gen_verbose) erl -noshell -pa $(ECOVERALL) -eval 'ecoveralls:travis_ci("$?"), init:stop()'
 
 # =============================================================================
 # Run targets
