@@ -126,7 +126,7 @@ call_anonymous_function(_Config) ->
 
 call_anonymous_undef(_Config) ->
     ok = ct:pal("Testing [call_anonymous_undef]"),
-    ok = ct:pal("Testing [call_anonymous_undef] Assumping stackstack depth is 5"),
+    ok = ct:pal("Testing [call_anonymous_undef] assuming stackstack depth of 5"),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,[],[]},_]}}}  = gen_rpc:call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
    ok = ct:pal("Result [call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 

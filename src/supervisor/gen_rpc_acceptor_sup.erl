@@ -24,7 +24,16 @@ start_link() ->
 
 start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
     ok = lager:debug("function=start_child event=starting_new_acceptor client_ip=\"~p\" client_node=\"~s\"", [ClientIp, Node]),
-    supervisor:start_child(?MODULE, [ClientIp,Node]).
+    case supervisor:start_child(?MODULE, [ClientIp, Node]) of
+        {error, {already_started, CPid}} ->
+            %% If we've already started the child, terminate it and start anew
+            ok = stop_child(CPid),
+            supervisor:start_child(?MODULE, [ClientIp, Node]);
+        {error, OtherError} ->
+            {error, OtherError};
+        {ok, Pid} ->
+            {ok, Pid}
+    end.
 
 -spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
@@ -38,5 +47,5 @@ stop_child(Pid) when is_pid(Pid) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_acceptor, {gen_rpc_acceptor,start_link,[]}, transient, 5000, worker, [gen_rpc_acceptor]}
+        {gen_rpc_acceptor, {gen_rpc_acceptor,start_link,[]}, temporary, 5000, worker, [gen_rpc_acceptor]}
     ]}}.
