@@ -290,11 +290,11 @@ loop(Node1, Node2, Name, TestPid, Count) ->
                 {error, pong_timeout}
     end.
 
-wait_for_reply(Node) ->
+wait_for_reply(Node)->
     wait_for_reply(Node, 0).
 
 wait_for_reply(_Node1, 1) -> {ok,passed}; 
-wait_for_reply(Node, Acc) when is_integer(Acc) ->
+wait_for_reply(Node, Acc) when is_atom(Node), is_integer(Acc) ->
     {ok, passed} =
     receive 
         {ok, Node, passed} ->
@@ -309,7 +309,7 @@ wait_for_reply(Node1, Node2) ->
     wait_for_reply(Node1, Node2, 0).
        
 wait_for_reply(_Node1, _Node2, 2) -> {ok,passed};
-wait_for_reply(Node1, Node2, Acc) when is_integer(Acc) ->
+wait_for_reply(Node1, Node2, Acc)  when is_atom(Node1) , is_atom(Node2), is_integer(Acc) ->
     {ok, passed} =
     receive 
         {ok, Node1, passed} -> 
