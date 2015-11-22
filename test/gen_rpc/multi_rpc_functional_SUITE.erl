@@ -104,7 +104,7 @@ eval_everywhere_mfa_one_node(_Config) ->
     true = register(Name, Pid),
     ok = ct:pal("Testing [eval_everywhere_mfa_one_node] Registered Listening Node"),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
-    {ok, ?SLAVE1, passed} = wait_for_reply(?SLAVE1),
+    {ok, passed} = wait_for_reply(?SLAVE1),
     ok.
 
 eval_everywhere_mfa_multiple_nodes(_Config) ->
@@ -172,7 +172,7 @@ safe_eval_everywhere_mfa_one_node(_Config) ->
     true = register(Name, Pid),
     ok = ct:pal("Testing [safe_eval_everywhere_mfa_one_node] Registered Listening Node"),
     [true, []] = gen_rpc:safe_eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
-    {ok, ?SLAVE1, passed} = wait_for_reply(?SLAVE1),
+    {ok, passed} = wait_for_reply(?SLAVE1),
     ok.
 
 safe_eval_everywhere_mfa_multiple_nodes(_Config) ->
@@ -266,14 +266,6 @@ spawn_listener(Node, Name, TestPid)->
                 end
           end).
 
-wait_for_reply(Node) ->
-    receive 
-        {ok, Node, passed} -> {ok, Node, passed};                                                                   
-        _Ign -> {error, _Ign}
-    after
-         5000 -> {error, timeout}
-    end.
-
 spawn_listener2(Node1, Node2, Name, TestPid, Count)->
     spawn(fun() -> loop(Node1, Node2, Name, TestPid, Count) end).
 
@@ -298,19 +290,34 @@ loop(Node1, Node2, Name, TestPid, Count) ->
                 {error, pong_timeout}
     end.
 
+wait_for_reply(Node) ->
+    wait_for_reply(Node, 0).
+
+wait_for_reply(_Node1, 1) -> {ok,passed}; 
+wait_for_reply(Node, Acc) when is_integer(Acc) ->
+    {ok, passed} =
+    receive 
+        {ok, Node, passed} ->
+                        ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node]),
+                        wait_for_reply(Node, increment(Node, Acc));
+        Else ->  ok = ct:pal("function=wait_for_reply event_unknown_msg=\"~p\"", [Else]),
+                 wait_for_reply(Node, Acc)                                
+    after
+         5000 -> receive M -> {error, {msg_too_late, M}} end
+    end;
 wait_for_reply(Node1, Node2) ->
     wait_for_reply(Node1, Node2, 0).
        
 wait_for_reply(_Node1, _Node2, 2) -> {ok,passed};
-wait_for_reply(Node1, Node2, Acc) ->
+wait_for_reply(Node1, Node2, Acc) when is_integer(Acc) ->
     {ok, passed} =
     receive 
         {ok, Node1, passed} -> 
                         ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node1]),
-                        wait_for_reply(Node1, Node2, increment(?SLAVE1, Acc));
+                        wait_for_reply(Node1, Node2, increment(Node1, Acc));
         {ok, Node2, passed} -> 
                         ok = ct:pal("function=wait_for_reply event_found_from=\"~p\"", [Node2]),
-                        wait_for_reply(Node1, Node2, increment(?SLAVE2, Acc));
+                        wait_for_reply(Node1, Node2, increment(Node2, Acc));
         Else ->  ok = ct:pal("function=wait_for_reply event_unkn0wn_msg=\"~p\"", [Else]),
                  wait_for_reply(Node1, Node2, Acc)
     after
