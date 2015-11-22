@@ -38,5 +38,4 @@ make_process_name(Node, Tag) when is_binary(Tag) ->
     binary_to_atom(<<Tag/binary, NodeBin/binary>>, latin1).
 
 ping({Node, Process, Msg}) ->
-%    ok = ct:pal("module=\"~p\" function=ping node=\"~p\" process=\"~p\" msg=\"~p\"",[?MODULE, Node, Process, Msg]),
     {Process, Node} ! {'pong', {node(), Process, Msg}}.
