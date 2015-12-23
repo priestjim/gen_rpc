@@ -3,7 +3,7 @@
 This is a list of pending features or code technical debt for `gen_rpc`:
 
 - Implement SSL connectivity
-- Implement block_call, async_call/yield, multicall, eval_everywhere, pinfo
+- Implement block_call, async_call/yield, multicall
 - Extract commonly used functions into `helper` module and use typespecs to enforce type checking
 - Update typespecs in project
 - Remove RPC call dependency and switch from rpc:call to a `gen_tcp` listener

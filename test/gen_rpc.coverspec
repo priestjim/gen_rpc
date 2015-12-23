@@ -1,16 +1,5 @@
-{nodes, ['gen_rpc_master@127.0.0.1', 'gen_rpc_slave@127.0.0.1']}.
+{nodes, ['gen_rpc_master@127.0.0.1', 'gen_rpc_slave@127.0.0.1', 'nonode@nohost']}.
+{export, "_build/test/cover/ct.coverdata"}.
 {level, details}.
-{incl_mods, [gen_rpc_acceptor,
-    gen_rpc_sup,
-    gen_rpc_client_sup,
-    gen_rpc_acceptor_sup,
-    gen_rpc_server_sup,
-    gen_rpc_server,
-    gen_rpc_dispatcher,
-    gen_rpc_client,
-    gen_rpc_helper,
-    gen_rpc_app,
-    gen_rpc,
-    'Elixir.ExRPC.Supervisor.Server'
-]}.
-
+{incl_dirs_r, ["../src"]}.
+{excl_dirs_r, ["../test"]}.
