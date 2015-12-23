@@ -84,7 +84,7 @@ spec: dialyzer
 	@$(TYPER) --annotate-inc-files -I ./include --plt $(PLT_FILE) -r src/
 
 dist: $(REBAR) test
-	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
+	@REBAR_PROFILE=test $(REBAR) do dialyzer, xref
 
 # =============================================================================
 # Run targets
