@@ -162,7 +162,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-
 acceptor_tcp_opts() ->
     case gen_rpc_helper:otp_release() >= 18 of
         true ->
@@ -171,10 +170,9 @@ acceptor_tcp_opts() ->
             ?ACCEPTOR_TCP_OPTS
     end.
 
-
 make_process_name(Node) ->
-    NodeBin = atom_to_binary(Node, latin1),
-    binary_to_atom(<<"gen_rpc_server_", NodeBin/binary>>, latin1).
+    NodeBin = atom_to_binary(Node, utf8),
+    binary_to_atom(<<"gen_rpc_server_", NodeBin/binary>>, utf8).
 
 %% Taken from prim_inet.  We are merely copying some socket options from the
 %% listening socket to the new acceptor socket.

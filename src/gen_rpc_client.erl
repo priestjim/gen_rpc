@@ -14,13 +14,15 @@
 
 %%% Include this library's name macro
 -include("app.hrl").
+%%% Include helpful guard macros
+-include("guards.hrl").
 
 %%% Local state
 -record(state, {socket :: port(),
         server_node :: atom(),
-        send_timeout :: non_neg_integer(),
-        receive_timeout :: non_neg_integer(),
-        inactivity_timeout :: non_neg_integer() | infinity}).
+        send_timeout :: timeout(),
+        receive_timeout :: timeout(),
+        inactivity_timeout :: timeout()}).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -64,14 +66,14 @@ call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
 
 %% Simple server call with custom receive timeout value
 call(Node, M, F, A, RecvTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
-                                 is_integer(RecvTO) orelse RecvTO =:= infinity ->
+                                 ?is_timeout(RecvTO) ->
     call(Node, M, F, A, RecvTO, undefined).
 
 %% Simple server call with custom receive and send timeout values
 %% This is the function that all of the above call
 call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
-                                         RecvTO =:= undefined orelse is_integer(RecvTO) orelse RecvTO =:= infinity,
-                                         SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
+                                         RecvTO =:= undefined orelse ?is_timeout(RecvTO),
+                                         SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     case whereis(Node) of
         undefined ->
             ok = lager:info("function=call event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
@@ -100,7 +102,7 @@ cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
 %% Simple server cast with custom send timeout value
 %% This is the function that all of the above casts call
 cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
-                                 SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
+                                 SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     %% Naming our gen_server as the node we're calling as it is extremely efficent:
     %% We'll never deplete atoms because all connected node names are already atoms in this VM
     case whereis(Node) of
@@ -122,28 +124,25 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
             true
     end.
 
-%% Evaluate Module:Function:Arguments on connected nodes including sender. Custom sender timeout.
-eval_everywhere(Nodes, M, F) ->
-    eval_everywhere(Nodes, M, F, [], 'undefined').
+%% Evaluate {M, F, A} on connected nodes.
+eval_everywhere(Nodes, M, F) when is_list(Nodes), is_atom(M), is_atom(F) ->
+    eval_everywhere(Nodes, M, F, [], undefined).
 
-%% Evaluate Module:Function:Arguments on connected nodes including sender. Custom sender timeout.
-eval_everywhere(Nodes, M, F, A) ->
-    eval_everywhere(Nodes, M, F, A, 'undefined').
+%% Evaluate {M, F, A} on connected nodes.
+eval_everywhere(Nodes, M, F, A) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A) ->
+    eval_everywhere(Nodes, M, F, A, undefined).
 
-%% Evaluate Module:Function:Arguments on custom list of nodes.
-eval_everywhere(Nodes, M, F, A, SendTO) ->
-    ok = lager:debug("function=eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
+%% Evaluate {M, F, A} on connected nodes.
+eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A),
+                                             SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     [cast(Node, M, F, A, SendTO) || Node <- Nodes],
-    'abcast'.
+    abcast.
 
 %% @doc Location transparent version of the BIF process_info/2.
-%% P
 -spec pinfo(Pid::pid()) -> [{Item::atom(), Info::term()}] | undefined.
 pinfo(Pid) when is_pid(Pid) ->
     call(node(Pid), erlang, process_info, [Pid]).
 
-%% @doc Location transparent version of the BIF process_info/2.
-%% 
 -spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
 pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
     call(node(Pid), erlang, process_info, [Pid, Item]).
@@ -179,19 +178,19 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
             gen_server:call(Pid, {{cast,M,F,A},SendTO}, infinity)
     end.
 
-%% Safe evaluate Module:Function:Arguments on implicit connected nodes. Custom sender timeout.
-safe_eval_everywhere(Nodes, M, F) ->
-    safe_eval_everywhere(Nodes, M, F, [], 'undefined').
+%% Safely evaluate {M, F, A} on connected nodes.
+safe_eval_everywhere(Nodes, M, F) when is_list(Nodes), is_atom(M), is_atom(F) ->
+    safe_eval_everywhere(Nodes, M, F, [], undefined).
 
-%% Safe evaluate Module:Function:Arguments on implicit connected nodes. Custom sender timeout.
-safe_eval_everywhere(Nodes, M, F, A) ->
-    safe_eval_everywhere(Nodes, M, F, A, 'undefined').
+%% Safely evaluate{M, F, A} on implicit connected nodes
+safe_eval_everywhere(Nodes, M, F, A) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A) ->
+    safe_eval_everywhere(Nodes, M, F, A, undefined).
 
-%% Safe evaluate Module:Function:Arguments on custom list of nodes.
-safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
-    ok = lager:debug("function=safe_eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
+%% Safe evaluate{M, F, A} on custom list of nodes.
+safe_eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A),
+                                             SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     Ret = [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes],
-    transform_result(Ret, Nodes).
+    parse_safe_eval_everywhere_result(Ret, Nodes).
 
 %%% ===================================================
 %%% Behaviour callbacks
@@ -436,15 +435,10 @@ merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
     {URecvTO, USendTO}.
 
 %% Transform result for safe_eval_everywhere to look like multicall
-transform_result(Result, Nodes) ->
-    BadNodes = get_badnodes(Result),
-    GoodNodes = Nodes -- BadNodes,
-    ok = lager:debug("function=transform_result good_nodes=\"~p\" bad_nodes=\"~p\"", [GoodNodes, BadNodes]),
+parse_safe_eval_everywhere_result(ResultNodes, AllNodes) ->
+    BadNodes = [ X || {X, {_,_}} <- ResultNodes],
+    GoodNodes = AllNodes -- BadNodes,
     case GoodNodes =/= [] of
         true -> [true, BadNodes];
         false -> BadNodes
     end.
-
-get_badnodes(Nodes) ->
-    [ X || {X, {_,_}} <- Nodes]. 
-

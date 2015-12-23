@@ -8,100 +8,63 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% CT Macros
--include_lib("test/gen_rpc/include/ct.hrl").
+-include_lib("test/include/ct.hrl").
 
-%%% Common Test callbacks
--export([all/0, init_per_suite/1, end_per_suite/1, init_per_testcase/2, end_per_testcase/2]).
-
-%%% Testing functions
--export([supervisor_black_box/1,
-        call/1,
-        call_anonymous_function/1,
-        call_anonymous_undef/1,
-        call_mfa_undef/1,
-        call_mfa_exit/1,
-        call_mfa_throw/1,
-        call_with_receive_timeout/1,
-        interleaved_call/1,
-        cast/1,
-        cast_anonymous_function/1,
-        cast_mfa_undef/1,
-        cast_mfa_exit/1,
-        cast_mfa_throw/1,
-        cast_inexistent_node/1,
-        pinfo_alive_process/1,
-        pinfo_dead_process/1,
-        pinfo_item/1,
-        safe_cast/1,
-        safe_cast_anonymous_function/1,
-        safe_cast_mfa_undef/1,
-        safe_cast_mfa_exit/1,
-        safe_cast_mfa_throw/1,
-        safe_cast_inexistent_node/1,
-        client_inactivity_timeout/1,
-        server_inactivity_timeout/1,
-        remote_node_call/1]).
-
-%%% Auxiliary functions for test cases
--export([interleaved_call_proc/3, interleaved_call_executor/1]).
+%%% No need to export anything, everything is automatically exported
+%%% as part of the test profile
 
 %%% ===================================================
 %%% CT callback functions
 %%% ===================================================
 all() ->
-    {exports, Functions} = lists:keyfind(exports, 1, ?MODULE:module_info()),
-    [FName || {FName, _} <- lists:filter(
-                               fun ({module_info,_}) -> false;
-                                   ({all,_}) -> false;
-                                   ({init_per_suite,1}) -> false;
-                                   ({end_per_suite,1}) -> false;
-                                   ({interleaved_call_proc,3}) -> false;
-                                   ({interleaved_call_executor,1}) -> false;
-                                   ({_,1}) -> true;
-                                   ({_,_}) -> false
-                               end, Functions)].
+    gen_rpc_test_helper:get_test_functions(?MODULE).
 
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
-    {ok, _Pid} = gen_rpc_test_helper:start_target(?NODE),
+    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?NODE),
     %% Setup application logging
-    ?set_application_environment(),
+    ok = gen_rpc_test_helper:set_application_environment(),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
-    ok = ct:pal("Started [functional] suite with master node [~s]", [node()]),
+    ok = ct:pal("Started [local_functional] suite with master node [~s]", [node()]),
     Config.
 
 end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = ?restart_application(),
+    ok = gen_rpc_test_helper:restart_application(),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
     Config;
+
 init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = ?restart_application(),
+    ok = gen_rpc_test_helper:restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
+
 init_per_testcase(remote_node_call, Config) ->
-    ok = start_slave(),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE),
     Config;
+
 init_per_testcase(_OtherTest, Config) ->
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = ?restart_application(),
+    ok = gen_rpc_test_helper:restart_application(),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     Config;
+
 end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = ?restart_application(),
+    ok = gen_rpc_test_helper:restart_application(),
     ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
+
 end_per_testcase(remote_node_call, Config) ->
-    ok = slave:stop(?SLAVE),
+    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
     Config;
+
 end_per_testcase(_OtherTest, Config) ->
     Config.
-
 
 %%% ===================================================
 %%% Test cases
@@ -291,12 +254,3 @@ interleaved_call_executor(Num) when is_integer(Num) ->
     ok = timer:sleep((3 - Num) * 1000),
     %% Then return the number
     Num.
-
-start_slave() ->
-    %% Starting a slave node with Distributed Erlang
-    {ok, _Slave} = slave:start(?SLAVE_IP, ?SLAVE_NAME, "+K true"),
-    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
-    %% Start the application remotely
-    {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [gen_rpc]),
-    ok.
-

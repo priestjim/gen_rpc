@@ -60,38 +60,36 @@ cast(Node, M, F, A) ->
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes.
 %% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It is fired and pray. 
+%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function()) -> 'abcast'.
-eval_everywhere(Nodes, M, F) -> 
+eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
 %% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It is fired and pray. 
+%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'abcast'.
 eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
 %% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It is fired and pray. 
+%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'abcast'.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A, SendTO).
 
 %% @doc Location transparent version of the BIF process_info/1.
-%%      
 -spec pinfo(Pid::pid()) -> [{Item::atom(), Info::term()}] | undefined.
  pinfo(Pid) ->
     call(node(Pid), erlang, process_info, [Pid]).
 
 %% @doc Location transparent version of the BIF process_info/2.
-%% 
 -spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
  pinfo(Pid, Item) ->
-    call(node(Pid), erlang, process_info, [Pid, Item]).    
+    call(node(Pid), erlang, process_info, [Pid, Item]).
 
 -spec safe_cast(Node::node(), M::module(), F::atom()|function()) -> 'true' | {'badrpc', term()} | {'badtcp' | term()}.
 safe_cast(Node, M, F) ->
@@ -105,19 +103,19 @@ safe_cast(Node, M, F, A) ->
 safe_cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes.
 %% The function returns list of nodes that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function()) -> ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
 %% The function returns list of nodes that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) ->  ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes. 
+%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
 %% The function returns list of that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list(), SendTO::timeout()) ->  ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
