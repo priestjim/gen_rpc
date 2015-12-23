@@ -9,7 +9,7 @@
 
 -include("app.hrl").
 
--export([otp_release/0, default_tcp_opts/1]).
+-export([otp_release/0, default_tcp_opts/1, make_process_name/2]).
 
 -spec otp_release() -> integer().
 otp_release() ->
@@ -33,4 +33,8 @@ default_tcp_opts(DefaultTcpOpts) ->
             DefaultTcpOpts
     end.
 
-
+-spec make_process_name(server | acceptor, node()) -> atom().
+make_process_name(Prefix, Node) when Prefix =:= acceptor orelse Prefix =:= server, is_atom(Node)->
+    PrefixBin = atom_to_binary(Prefix, utf8),
+    NodeBin = atom_to_binary(Node, utf8),
+    binary_to_atom(<<"gen_rpc_", PrefixBin/binary, "_", NodeBin/binary>>, utf8).

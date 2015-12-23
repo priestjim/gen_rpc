@@ -43,7 +43,7 @@
 %%% Supervisor functions
 %%% ===================================================
 start_link(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
-    Name = make_process_name(Node),
+    Name = gen_rpc_helper:make_process_name(acceptor, Node),
     gen_fsm:start_link({local,Name}, ?MODULE, {ClientIp, Node}, [{spawn_opt, [{priority, high}]}]).
 
 stop(Pid) when is_pid(Pid) ->
@@ -184,10 +184,6 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% Private functions
 %%% ===================================================
 
-make_process_name(Node) ->
-    NodeBin = atom_to_binary(Node, latin1),
-    binary_to_atom(<<"gen_rpc_acceptor_", NodeBin/binary>>, latin1).
-
 %% Process an RPC call request outside of the FSM
 call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     ok = lager:debug("function=call_worker event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),
@@ -196,8 +192,8 @@ call_worker(Parent, WorkerPid, Ref, M, F, A) ->
     % and manifest as timeout. Wrap inside anonymous function with catch
     % will crash the worker quickly not manifest as a timeout.
     % See call_MFA_undef test.
-    Ret = try erlang:apply(M, F, A) 
-          catch 
+    Ret = try erlang:apply(M, F, A)
+          catch
                throw:Term -> Term;
                exit:Reason -> {badrpc, {'EXIT', Reason}};
                error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
