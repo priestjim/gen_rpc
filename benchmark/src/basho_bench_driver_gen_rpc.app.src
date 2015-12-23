@@ -1,0 +1,15 @@
+{application, 'basho_bench_driver_gen_rpc',
+ [{description, "Basho Bench Test Driver for gen_rpc"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {contributors, []},
+  {licenses, []},
+  {links, []}
+ ]}.

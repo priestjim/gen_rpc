@@ -1,0 +1,1 @@
+-define(APP, 'gen_rpc').
