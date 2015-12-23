@@ -28,6 +28,9 @@
 %%% FSM functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
 
+-export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
+         safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
+
 -export([pinfo/1, pinfo/2]).
 
 %%% Behaviour callbacks
@@ -119,6 +122,20 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
             true
     end.
 
+%% Evaluate Module:Function:Arguments on connected nodes including sender. Custom sender timeout.
+eval_everywhere(Nodes, M, F) ->
+    eval_everywhere(Nodes, M, F, [], 'undefined').
+
+%% Evaluate Module:Function:Arguments on connected nodes including sender. Custom sender timeout.
+eval_everywhere(Nodes, M, F, A) ->
+    eval_everywhere(Nodes, M, F, A, 'undefined').
+
+%% Evaluate Module:Function:Arguments on custom list of nodes.
+eval_everywhere(Nodes, M, F, A, SendTO) ->
+    ok = lager:debug("function=eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
+    [cast(Node, M, F, A, SendTO) || Node <- Nodes],
+    'abcast'.
+
 %% @doc Location transparent version of the BIF process_info/2.
 %% P
 -spec pinfo(Pid::pid()) -> [{Item::atom(), Info::term()}] | undefined.
@@ -129,7 +146,7 @@ pinfo(Pid) when is_pid(Pid) ->
 %% 
 -spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
 pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
-    call(node(Pid), erlang, process_info, [Pid, Item]).    
+    call(node(Pid), erlang, process_info, [Pid, Item]).
 
 %% Safe server cast with no args and default timeout values
 safe_cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
@@ -161,6 +178,20 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
             ok = lager:debug("function=safe_cast event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
             gen_server:call(Pid, {{cast,M,F,A},SendTO}, infinity)
     end.
+
+%% Safe evaluate Module:Function:Arguments on implicit connected nodes. Custom sender timeout.
+safe_eval_everywhere(Nodes, M, F) ->
+    safe_eval_everywhere(Nodes, M, F, [], 'undefined').
+
+%% Safe evaluate Module:Function:Arguments on implicit connected nodes. Custom sender timeout.
+safe_eval_everywhere(Nodes, M, F, A) ->
+    safe_eval_everywhere(Nodes, M, F, A, 'undefined').
+
+%% Safe evaluate Module:Function:Arguments on custom list of nodes.
+safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
+    ok = lager:debug("function=safe_eval_everywhere_mfa_to event=eval_on_nodes nodes=\"~p\"", [Nodes]),
+    Ret = [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes],
+    transform_result(Ret, Nodes).
 
 %%% ===================================================
 %%% Behaviour callbacks
@@ -403,3 +434,17 @@ merge_timeout_values(SRecvTO, undefined, _SSendTO, USendTO) ->
     {SRecvTO, USendTO};
 merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
     {URecvTO, USendTO}.
+
+%% Transform result for safe_eval_everywhere to look like multicall
+transform_result(Result, Nodes) ->
+    BadNodes = get_badnodes(Result),
+    GoodNodes = Nodes -- BadNodes,
+    ok = lager:debug("function=transform_result good_nodes=\"~p\" bad_nodes=\"~p\"", [GoodNodes, BadNodes]),
+    case GoodNodes =/= [] of
+        true -> [true, BadNodes];
+        false -> BadNodes
+    end.
+
+get_badnodes(Nodes) ->
+    [ X || {X, {_,_}} <- Nodes]. 
+
