@@ -10,11 +10,13 @@ cache:
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "make dist"
+script: "make testclean dist"
+after-sucess: "make coveralls"
 branches:
   only:
     - master
     - develop
+
 notifications:
   email:
     - priestjim@gmail.com
