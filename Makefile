@@ -114,7 +114,7 @@ distclean: $(REBAR)
 
 testclean:
 	@rm -fr _build/test && rm -rf ./test/*.beam
-	@find log/ct -maxdepth 1 -name ct_run* -type d -cmin +360 -exec rm -fr {} \;
+	@find log/ct -maxdepth 1 -name ct_run* -type d -cmin +360 -exec rm -fr {} \; 2> /dev/null || true
 
 epmd:
 	@pgrep epmd 2> /dev/null > /dev/null || epmd -daemon || true
