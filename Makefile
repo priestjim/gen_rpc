@@ -3,20 +3,21 @@
 #
 # Build targets:
 #
-# all: 			rebar3 as dev do compile
-# shell:		rebar3 as dev do shell
-# clean: 		rebar3 as dev do clean
-# distclean: 	rebar3 as dev do clean -a
-#               and explicitly delete other build artifacts
-# test: 		rebar3 as test do ct -v, cover
-# dialyzer: 	rebar3 as test do dialyzer
-# xref:			rebar3 as dev do xref
-# dist: 		rebar3 as test do compile, ct -v, xref, dialyzer, cover
-# spec: 		Runs typer to generate source code specs
-# rebar: 		Downloads a precompiled rebar3 binary and places it inside the project. The rebar binary is .gitignored.
-#				This step is always run first on build targets.
-# tags:			Builds Emacs tags file
-# epmd:			Runs the Erlang port mapper daemon, required for running the app and tests
+# all: 			    rebar3 as dev do compile
+# shell:		    rebar3 as dev do shell
+# clean: 		    rebar3 as dev do clean
+# distclean:        rebar3 as dev do clean -a
+#                   and explicitly delete other build artifacts
+# test: 		    rebar3 as test do ct -v, cover
+# coveralls:        Send coverage to coveralls.io
+# dialyzer:         rebar3 as test do dialyzer
+# xref:             rebar3 as dev do xref
+# dist:             rebar3 as test do compile, ct -v -c, xref, dialyzer, cover
+# spec:             Runs typer to generate source code specs
+# rebar:            Downloads a precompiled rebar3 binary and places it inside the project. The rebar binary is .gitignored.
+#                   This step is always run first on build targets.
+# tags:             Builds Emacs tags file
+# epmd:             Runs the Erlang port mapper daemon, required for running the app and tests
 #
 
 # .DEFAULT_GOAL can be overridden in custom.mk if "all" is not the desired
@@ -25,7 +26,7 @@
 .DEFAULT_GOAL := all
 
 # Build targets
-.PHONY: all test dialyzer xref spec dist
+.PHONY: all test dialyzer xref spec dist coveralls
 
 # Run targets
 .PHONY: shell
@@ -64,6 +65,8 @@ REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 
 PLT_FILE = $(CURDIR)/_plt/*plt
 
+COVERDATA = $(CURDIR)/_build/test/ct.coverdata
+
 # =============================================================================
 # Build targets
 # =============================================================================
@@ -85,6 +88,9 @@ spec: dialyzer
 
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
+
+coveralls: $(COVERDATA)
+	@REBAR_PROFILE=test $(REBAR) do coveralls send
 
 # =============================================================================
 # Run targets
@@ -120,3 +126,6 @@ $(REBAR):
 
 tags:
 	find src _build/default/lib -name "*.[he]rl" -print | etags -
+
+$(COVERDATA):
+	@$(MAKE) test
