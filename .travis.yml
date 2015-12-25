@@ -1,7 +1,7 @@
 sudo: false
 language: erlang
 otp_release:
-  - 18.2
+  - 18.2.1
   - 18.1
   - 18.0
   - 17.5
@@ -10,7 +10,7 @@ cache:
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "make testclean dist"
+script: "ulimit -v unlimited -t unlimited -n 4096 && make testclean dist"
 after-sucess: "make coveralls"
 branches:
   only:
