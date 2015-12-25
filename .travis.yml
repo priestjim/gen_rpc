@@ -7,11 +7,15 @@ otp_release:
   - 17.5
 cache:
   directories:
+  - $HOME/otp/18.2
+  - $HOME/otp/18.1
+  - $HOME/otp/18.0
+  - $HOME/otp/17.5
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "ulimit -v unlimited -t unlimited -n 4096 && make testclean dist"
-after-sucess: "make coveralls"
+script: "make testclean dist"
+after_sucess: "make coveralls"
 branches:
   only:
     - master
