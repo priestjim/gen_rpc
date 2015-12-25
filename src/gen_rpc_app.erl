@@ -22,7 +22,7 @@
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
--spec start(_,_) -> supervisor:startlink_ret().
+-spec start(_,_) -> {'error',_} | {'ok',pid()} | {'ok',pid(),_}.
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
