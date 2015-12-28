@@ -90,7 +90,7 @@ dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
 
 coveralls: $(COVERDATA)
-	@REBAR_PROFILE=test $(REBAR) do coveralls send
+	@REBAR_PROFILE=test $(REBAR) do coveralls send || true
 
 # =============================================================================
 # Run targets

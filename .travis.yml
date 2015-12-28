@@ -14,8 +14,7 @@ cache:
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "make testclean dist"
-after_sucess: "make coveralls"
+script: "make testclean dist coveralls"
 branches:
   only:
     - master
