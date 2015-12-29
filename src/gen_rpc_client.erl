@@ -212,8 +212,7 @@ yield(Key)->
 
 yield(Key, YieldTO)-> 
     case nb_yield(Key, YieldTO) of
-        {value, R} -> R;
-        {badrpc, Reason} -> {badrpc, Reason}
+        {value, R} -> R
     end.
 
 %% Simple server non-blocking yield with key, default timeout value of 0
