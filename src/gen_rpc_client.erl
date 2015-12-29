@@ -30,6 +30,8 @@
 %%% FSM functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
 
+-export([async_call/3, async_call/4, yield/1, yield/2, nb_yield/1, nb_yield/2]).
+
 -export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
          safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
 
@@ -56,6 +58,18 @@ stop(Node) when is_atom(Node) ->
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
+%% Simple server async_call with no args
+async_call(Node, M, F)->
+    async_call(Node, M, F, []).
+
+%% Simple server async_call with args
+async_call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+    ReplyTo = self(),
+    spawn(fun()-> 
+              Reply = call(Node, M, F, A, undefined, undefined),
+              ReplyTo ! {self(), {promise_reply, Reply}}
+          end).
+
 %% Simple server call with no args and default timeout values
 call(Node, M, F) ->
     call(Node, M, F, [], undefined, undefined).
@@ -142,6 +156,7 @@ eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom
 pinfo(Pid) when is_pid(Pid) ->
     call(node(Pid), erlang, process_info, [Pid]).
 
+%% @doc Location transparent version of the BIF process_info/2.
 -spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
 pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
     call(node(Pid), erlang, process_info, [Pid, Item]).
@@ -191,6 +206,33 @@ safe_eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is
     Ret = [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes],
     parse_safe_eval_everywhere_result(Ret, Nodes).
 
+%% Simple server yield with key. Delegate to nb_yield. Default timeout form configuration.
+yield(Key)-> 
+    yield(Key, infinity).
+
+yield(Key, YieldTO)-> 
+    case nb_yield(Key, YieldTO) of
+        {value, R} -> R;
+        {badrpc, Reason} -> {badrpc, Reason}
+    end.
+
+%% Simple server non-blocking yield with key, default timeout value of 0
+nb_yield(Key)->
+    nb_yield(Key, 0).
+
+%% Simple server non-blocking yield with key and custom timeout value
+nb_yield(Key, Timeout) when is_pid(Key), is_integer(Timeout) orelse Timeout =:= infinity ->
+    receive 
+            {Key, {promise_reply, Reply}} -> {value, Reply};
+            UnknownMsg -> 
+                    ok = lager:notice("function=nb_yield event=unknown_msg yield_key=\"~p\" message=\"~p\"", [Key, UnknownMsg]),
+                    {value, {badrpc, timeout}}
+    after Timeout ->
+            ok = lager:notice("function=nb_yield event=call_timeout yield_key=\"~p\"", [Key]),
+            {value, {badrpc, timeout}}
+    end.
+
+
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
@@ -206,7 +248,7 @@ init({Node}) ->
     %% Perform an in-band RPC call to the remote node
     %% asking it to launch a listener for us and return us
     %% the port that has been allocated for us
-    ok = lager:info("function=init event=initializing_client server_node=\"~s\" connect_timeout=~B send_timeout=~B receive_timeout=~B inactivity_timeout=~p",
+    ok = lager:info("function=init event=initializing_client server_node=\"~s\" connect_timeout=~B send_timeout=~B receive_timeout=~B inactivity_timeout=\"~p\"",
                     [Node, ConnTO, SendTO, RecvTO, TTL]),
     case rpc:call(Node, gen_rpc_server_sup, start_child, [node()], ConnTO) of
         {ok, Port} ->
