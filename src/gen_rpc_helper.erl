@@ -24,7 +24,7 @@ otp_release() ->
             16
     end.
 
--spec default_tcp_opts(gen_tcp:option()) ->  gen_tcp:option().
+-spec default_tcp_opts([gen_tcp:option()]) -> [gen_tcp:option()].
 default_tcp_opts(DefaultTcpOpts) ->
     case otp_release() >= 18 of
         true ->

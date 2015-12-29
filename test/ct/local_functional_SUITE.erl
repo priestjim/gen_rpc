@@ -214,6 +214,13 @@ remote_node_call(_Config) ->
     ok = ct:pal("Testing [remote_node_call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
 
+compat_call(_Config) ->
+    ok = ct:pal("Testing [compat_call]"),
+    {ok, _Port} = 'Elixir.ExRPC.Supervisor.Server':start_child(?NODE),
+    ServerProc = gen_rpc_helper:make_process_name(server, ?NODE),
+    ServerPid = whereis(ServerProc),
+    ok = gen_rpc_server_sup:stop_child(ServerPid).
+
 %%% ===================================================
 %%% Auxiliary functions for test cases
 %%% ===================================================

@@ -7,14 +7,19 @@ otp_release:
   - 17.5
 cache:
   directories:
+  - $HOME/otp/18.2
+  - $HOME/otp/18.1
+  - $HOME/otp/18.0
+  - $HOME/otp/17.5
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "make dist"
+script: "make testclean dist coveralls"
 branches:
   only:
     - master
     - develop
+
 notifications:
   email:
     - priestjim@gmail.com

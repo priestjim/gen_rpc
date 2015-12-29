@@ -62,9 +62,10 @@ get_port(Pid) when is_pid(Pid) ->
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
+-spec init({node()}) -> {'ok', #state{}} | {'stop', any()}.
 init({Node}) ->
     ok = lager:info("function=init client_node=\"~s\"", [Node]),
-    process_flag(trap_exit, true),
+    _ = process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
     case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->

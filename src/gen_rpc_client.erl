@@ -57,16 +57,15 @@ stop(Node) when is_atom(Node) ->
 %%% Server functions
 %%% ===================================================
 %% Simple server call with no args and default timeout values
-call(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
+call(Node, M, F) ->
     call(Node, M, F, [], undefined, undefined).
 
 %% Simple server call with args and default timeout values
-call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+call(Node, M, F, A) ->
     call(Node, M, F, A, undefined, undefined).
 
 %% Simple server call with custom receive timeout value
-call(Node, M, F, A, RecvTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
-                                 ?is_timeout(RecvTO) ->
+call(Node, M, F, A, RecvTO) ->
     call(Node, M, F, A, RecvTO, undefined).
 
 %% Simple server call with custom receive and send timeout values
@@ -92,11 +91,11 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
     end.
 
 %% Simple server cast with no args and default timeout values
-cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
+cast(Node, M, F) ->
     cast(Node, M, F, [], undefined).
 
 %% Simple server cast with args and default timeout values
-cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+cast(Node, M, F, A) ->
     cast(Node, M, F, A, undefined).
 
 %% Simple server cast with custom send timeout value
@@ -125,11 +124,11 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     end.
 
 %% Evaluate {M, F, A} on connected nodes.
-eval_everywhere(Nodes, M, F) when is_list(Nodes), is_atom(M), is_atom(F) ->
+eval_everywhere(Nodes, M, F) ->
     eval_everywhere(Nodes, M, F, [], undefined).
 
 %% Evaluate {M, F, A} on connected nodes.
-eval_everywhere(Nodes, M, F, A) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A) ->
+eval_everywhere(Nodes, M, F, A) ->
     eval_everywhere(Nodes, M, F, A, undefined).
 
 %% Evaluate {M, F, A} on connected nodes.
@@ -148,11 +147,11 @@ pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
     call(node(Pid), erlang, process_info, [Pid, Item]).
 
 %% Safe server cast with no args and default timeout values
-safe_cast(Node, M, F) when is_atom(Node), is_atom(M), is_atom(F) ->
+safe_cast(Node, M, F) ->
     safe_cast(Node, M, F, [], undefined).
 
 %% Safe server cast with args and default timeout values
-safe_cast(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
+safe_cast(Node, M, F, A) ->
     safe_cast(Node, M, F, A, undefined).
 
 %% Safe server cast with custom send timeout value
@@ -179,11 +178,11 @@ safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_
     end.
 
 %% Safely evaluate {M, F, A} on connected nodes.
-safe_eval_everywhere(Nodes, M, F) when is_list(Nodes), is_atom(M), is_atom(F) ->
+safe_eval_everywhere(Nodes, M, F) ->
     safe_eval_everywhere(Nodes, M, F, [], undefined).
 
 %% Safely evaluate{M, F, A} on implicit connected nodes
-safe_eval_everywhere(Nodes, M, F, A) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A) ->
+safe_eval_everywhere(Nodes, M, F, A) ->
     safe_eval_everywhere(Nodes, M, F, A, undefined).
 
 %% Safe evaluate{M, F, A} on custom list of nodes.
