@@ -221,9 +221,12 @@ nb_yield(Key)->
     nb_yield(Key, 0).
 
 %% Simple server non-blocking yield with key and custom timeout value
-nb_yield(Key, Timeout) when is_pid(Key), is_integer(Timeout) orelse Timeout =:= infinity ->
+nb_yield(Key, Timeout) when is_pid(Key), ?is_timeout(Timeout) ->
     receive 
             {Key, {promise_reply, Reply}} -> {value, Reply};
+            {badtcp, Reason} ->
+                    ok = lager:notice("function=nb_yield event=call_bad_tcp yield_key=\"~p\" reason=\"~p\"", [Key, Reason]),
+                    {value, {badtcp, Reason}};
             UnknownMsg -> 
                     ok = lager:notice("function=nb_yield event=unknown_msg yield_key=\"~p\" message=\"~p\"", [Key, UnknownMsg]),
                     {value, {badrpc, timeout}}

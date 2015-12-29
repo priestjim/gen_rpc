@@ -193,7 +193,8 @@ async_call_yield_reentrant(_Config) ->
                          end),
     {ok, _} = timer:kill_after(5000, Pid),
     NbYieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
-    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 10),
+    % Verify not able to reuse Key again. Key is one time use.
+    {_,_,_} = gen_rpc:yield(NbYieldKey0, 100),
     {value, {badrpc, timeout}} = gen_rpc:nb_yield(NbYieldKey0, 10),
     YieldKey = gen_rpc:async_call(?SLAVE, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
