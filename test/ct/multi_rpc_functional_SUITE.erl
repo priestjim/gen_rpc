@@ -55,8 +55,15 @@ eval_everywhere_mfa_no_node(_Config) ->
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_client_sup)).
 
+%% Eval_everywhere is fire and forget, which means some test cases need to show
+%% something has been executed on target nodes. 
+%% The main technique used in eval_everywhere testing is to setup servers- slaves,
+%% and have the test script to ping the slaves with tagged messages and then wait for 
+%% such and match the tags to verify originality.
+
 %% Ping the target node with tagged msg. Target Node reply back with
 %% tagged msg and its own identity.
+ 
 eval_everywhere_mfa_one_node(_Config) ->
     ok = ct:pal("Testing [eval_everywhere_mfa_one_node]"),
     ConnectedNodes = [?SLAVE1],
