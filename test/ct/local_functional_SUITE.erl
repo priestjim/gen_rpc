@@ -78,6 +78,52 @@ supervisor_black_box(_Config) ->
     ok.
 
 %% Test main functions
+block_call(_Config) ->
+    ok = ct:pal("Testing [block_call]"),
+    RevTO = 200,
+    {_Mega, _Sec, _Micro} = gen_rpc:block_call(?NODE, os, timestamp, RevTO).
+
+block_call_mfa(_Config) ->
+    ok = ct:pal("Testing [block_call_mfa]"),
+    SendTO = RevTO = 200,
+    true = gen_rpc:block_call(?NODE, erlang, is_process_alive, [whereis(gen_rpc_client_sup)], RevTO, SendTO).
+
+block_call_anonymous_function(_Config) ->
+    ok = ct:pal("Testing [block_call_anonymous_function]"),
+    RevTO = 200,
+    {_,"\"block_call_anonymous_function\""} = gen_rpc:block_call(?NODE, erlang, apply,[fun(A) -> {self(), io_lib:print(A)} end,                                                     ["block_call_anonymous_function"]], RevTO).
+
+block_call_anonymous_undef(_Config) ->
+    ok = ct:pal("Testing [block_call_anonymous_undef]"),
+    ok = ct:pal("Testing [block_call_anonymous_undef] Assumping stackstack depth is 5"),
+    RevTO = 200,
+    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,[],[]},_]}}}  = gen_rpc:block_call(?NODE, erlang, apply, [fun() -> os:timestamp_undef() end, []], RevTO),
+   ok = ct:pal("Result [block_call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
+
+block_call_mfa_undef(_Config) ->
+    ok = ct:pal("Testing [block_call_mfa_undef]"),
+    RevTO = 200,
+    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:block_call(?NODE, os, timestamp_undef, RevTO),
+    ok = ct:pal("Result [block_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
+
+block_call_mfa_exit(_Config) ->
+    ok = ct:pal("Testing [block_call_mfa_exit]"),
+    RevTO = 200,
+    {badrpc, {'EXIT', die}} = gen_rpc:block_call(?NODE, erlang, exit, ['die'], RevTO),
+    ok = ct:pal("Result [block_call_mfa_undef]: signal=EXIT Reason={die}").
+
+block_call_mfa_throw(_Config) ->
+    ok = ct:pal("Testing [block_call_mfa_throw]"),
+    RevTO = 200,
+    'throwXdown' = gen_rpc:block_call(?NODE, erlang, throw, ['throwXdown'], RevTO),
+    ok = ct:pal("Result [block_call_mfa_undef]: signal=EXIT Reason={die}").
+
+block_call_with_receive_timeout(_Config) ->
+    ok = ct:pal("Testing [block_call_with_receive_timeout]"),
+    RevTO = 1,
+    {badrpc, timeout} = gen_rpc:block_call(?NODE, timer, sleep, [500], RevTO),
+    ok = timer:sleep(500).
+
 call(_Config) ->
     ok = ct:pal("Testing [call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp).

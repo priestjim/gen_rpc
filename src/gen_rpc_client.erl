@@ -30,6 +30,8 @@
 %%% FSM functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
 
+-export([block_call/4, block_call/5, block_call/6]).
+
 -export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
          safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
 
@@ -56,6 +58,39 @@ stop(Node) when is_atom(Node) ->
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
+
+%% Blocking server call with no args and custom send timeout values
+block_call(Node, M, F, RecvTO) ->
+    block_call(Node, M, F, [], RecvTO, undefined).
+
+block_call(Node, M, F, A, RecvTO) ->
+    block_call(Node, M, F, A, RecvTO, undefined).
+
+%% Blocking server call with args and custom send timeout values
+block_call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
+                                         RecvTO =:= undefined orelse ?is_timeout(RecvTO),
+                                         SendTO =:= undefined orelse ?is_timeout(SendTO) ->    % We don't have worker for block_call. Use timeout on gen_server:call
+    % undefined value for gen_server timeout equals infinity
+    RecvTO1 = normalize_timeout(RecvTO),
+    Reply =
+    case whereis(Node) of
+        undefined ->
+            ok = lager:info("function=block_call event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
+            case gen_rpc_dispatcher:start_client(Node) of
+                {ok, NewPid} ->
+                    %% We take care of CALL inside the gen_server
+                    %% This is not resilient enough if the caller's mailbox is full
+                    %% but it's good enough for now
+                    catch gen_server:call(NewPid, {{block_call,M,F,A},SendTO}, RecvTO1);
+                {error, Reason} ->
+                    Reason
+            end;
+        Pid ->
+            ok = lager:debug("function=block_call event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
+            catch gen_server:call(Pid, {{block_call,M,F,A}, SendTO}, RecvTO1)
+    end,
+    normalize_reply(Reply).
+
 %% Simple server call with no args and default timeout values
 call(Node, M, F) ->
     call(Node, M, F, [], undefined, undefined).
@@ -142,6 +177,7 @@ eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom
 pinfo(Pid) when is_pid(Pid) ->
     call(node(Pid), erlang, process_info, [Pid]).
 
+%% @doc Location transparent version of the BIF process_info/2.
 -spec pinfo(Pid::pid(), Iterm::atom()) -> {Item::atom(), Info::term()} | undefined | [].
 pinfo(Pid, Item) when is_pid(Pid), is_atom(Item) ->
     call(node(Pid), erlang, process_info, [Pid, Item]).
@@ -230,6 +266,39 @@ init({Node}) ->
             {stop, {badrpc, Reason}}
     end.
 
+%% This is the actual BLOCK CALL handler.
+handle_call({{block_call,_M,_F,_A} = PacketTuple, USendTO}, Caller, #state{socket=Socket,server_node=Node} = State) ->
+    {_Ign, SendTO} = merge_timeout_values(State#state.receive_timeout, undefined, State#state.send_timeout, USendTO),
+    %% Marshal everything including the Caller to server. 
+    Packet = erlang:term_to_binary({node(), self(), Caller, PacketTuple}),
+    ok = lager:debug("function=handle_call message=block_call event=constructing_call_term socket=\"~p\"",
+                     [Socket]),
+    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
+    %% Since call can fail because of a timed out connection without gen_rpc knowing it,
+    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
+    case net_kernel:connect(Node) of
+        true ->
+            case gen_tcp:send(Socket, Packet) of
+                {error, timeout} ->
+                    ok = lager:error("function=handle_call message=block_call event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
+                    %% Reply will be handled from the worker
+                    {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
+                {error, Reason} ->
+                    ok = lager:error("function=handle_call message=block_call event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+                    %% Reply will be handled from the worker
+                    {stop, {badtcp,Reason}, {badtcp,Reason}, State};
+                ok ->
+                    ok = lager:debug("function=handle_call message=block_call event=transmission_succeeded socket=\"~p\"", [Socket]),
+                    %% We need to enable the socket and perform the call only if the call succeeds
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    %% Reply will be handled from the worker
+                    {noreply, State, State#state.inactivity_timeout}
+            end;
+        _Else ->
+            ok = lager:error("function=handle_call message=block_call event=node_down socket=\"~p\"",
+                             [Socket]),
+            {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
+    end;
 %% This is the actual CALL handler
 handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket,server_node=Node} = State) ->
     {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
@@ -338,6 +407,11 @@ handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
     ok = lager:warning("function=handle_info message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
     {stop, normal, State};
 
+handle_info({reply, Caller, Reply}, #state{socket=Socket} = State) ->
+    ok = lager:warning("function=handle_info message=reply event=reply_received socket=\"~p\" action=sending_to_caller", [Socket]),
+    _Ign = gen_server:reply(Caller, Reply),
+    {noreply, State, State#state.inactivity_timeout};
+
 %% Stub for VM up information
 handle_info({NodeEvent, _Node, _InfoList}, State) when NodeEvent =:= nodeup; NodeEvent =:= nodedown ->
     {noreply, State, State#state.inactivity_timeout};
@@ -432,6 +506,14 @@ merge_timeout_values(SRecvTO, undefined, _SSendTO, USendTO) ->
     {SRecvTO, USendTO};
 merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
     {URecvTO, USendTO}.
+
+normalize_timeout(undefined) -> infinity;
+normalize_timeout(E) -> E.
+
+normalize_reply({'EXIT', {timeout,_}}) -> {badrpc, timeout};
+normalize_reply({'EXIT', {{nodedown,_},_}}) -> {badrpc, nodedown};
+normalize_reply({'EXIT', X}) -> exit(X);
+normalize_reply(X) -> X.
 
 %% Transform result for safe_eval_everywhere to look like multicall
 parse_safe_eval_everywhere_result(ResultNodes, AllNodes) ->

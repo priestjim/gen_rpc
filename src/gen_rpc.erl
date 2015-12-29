@@ -8,7 +8,10 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Library interface
--export([call/3,
+-export([block_call/4,
+        block_call/5,
+        block_call/6,
+        call/3,
         call/4,
         call/5,
         call/6,
@@ -32,6 +35,18 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
+-spec block_call(Node::node(), M::module(), F::atom()|function(),  RecvTO::timeout()) -> term() | {badrpc, term()}.
+block_call(Node, M, F, RecvTO) ->
+    gen_rpc_client:block_call(Node, M, F, RecvTO).
+
+-spec block_call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout()) -> term() | {badrpc, term()}.
+block_call(Node, M, F, A, RecvTO) ->
+    gen_rpc_client:block_call(Node, M, F, A, RecvTO).
+
+-spec block_call(Node::node(), M::module(), F::atom()|function(), A::list(), RecvTO::timeout(), SendTO::timeout()) -> term() | {badrpc, term()}.
+block_call(Node, M, F, A, RecvTO, SendTO) ->
+    gen_rpc_client:block_call(Node, M, F, A, RecvTO, SendTO).
+
 -spec call(Node::node(), M::module(), F::atom()|function()) -> term() | {'badrpc', term()} | {'badtcp' | term()}.
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
