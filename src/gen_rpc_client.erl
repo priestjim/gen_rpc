@@ -211,6 +211,10 @@ nb_yield(Key, Timeout) when is_pid(Key), ?is_timeout(Timeout) ->
     case erlang:is_process_alive(Key) of
         true ->
             receive
+                {Key, {promise_reply, {badtcp, Reason}}} ->
+                    ok = lager:notice("function=nb_yield event=rpc_call_failed yield_key=\"~p\" message=\"~p\"",
+                                      [Key, Reason]),
+                    timeout;
                 {Key, {promise_reply, Reply}} ->
                     {value, Reply};
                 UnknownMsg ->
@@ -223,7 +227,6 @@ nb_yield(Key, Timeout) when is_pid(Key), ?is_timeout(Timeout) ->
         false ->
             timeout
     end.
-
 
 %%% ===================================================
 %%% Behaviour callbacks
