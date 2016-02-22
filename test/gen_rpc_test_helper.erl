@@ -13,6 +13,7 @@
 -export([start_distribution/1,
         start_slave/1,
         set_application_environment/0,
+        set_application_environment/1,
         get_test_functions/1,
         make_process_name/1,
         make_process_name/2,
@@ -44,6 +45,7 @@ start_slave(Slave) ->
     Name = list_to_atom(NameStr),
     {ok, _Slave} = slave:start(IpStr, Name, "+K true"),
     ok = rpc:call(Slave, code, add_pathsz, [code:get_path()]),
+    ok = set_application_environment(Slave),
     %% Start the application remotely
     {ok, _SlaveApps} = rpc:call(Slave, application, ensure_all_started, [?APP]),
     ok.
@@ -53,17 +55,12 @@ stop_slave(Slave) ->
     ok.
 
 set_application_environment() ->
-    _ = [application:set_env(Application, Key, Value, [{persistent, true}]) || {Application, Key, Value} <-
-        [{sasl, errlog_type, error},
-        {sasl, error_logger_mf_dir, false},
-        {gen_rpc, connect_timeout, 500},
-        {gen_rpc, send_timeout, 500},
-        {lager, colored, true},
-        {lager, handlers, [
-            {lager_console_backend, [notice, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]},
-            {lager_common_test_backend, [notice, {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}]}
-        ]}
-    ]],
+    set_application_environment(node()).
+
+set_application_environment(Node) when is_atom(Node) ->
+    ok = lists:foreach(fun({Application, Key, Value}) ->
+        ok = rpc:call(Node, application, set_env, [Application, Key, Value, [{persistent, true}]])
+    end, ?TEST_APPLICATION_ENV),
     ok.
 
 restart_application() ->

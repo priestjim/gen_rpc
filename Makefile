@@ -63,7 +63,9 @@ endif
 
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 
-PLT_FILE = $(CURDIR)/_plt/*plt
+OTP_RELEASE = $(shell escript otp-release.escript)
+
+PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 
 COVERDATA = $(CURDIR)/_build/test/ct.coverdata
 
@@ -77,7 +79,7 @@ all: $(REBAR)
 test: $(REBAR) epmd
 	@REBAR_PROFILE=test $(REBAR) do ct -c, cover
 
-dialyzer: $(REBAR)
+dialyzer: $(REBAR) $(PLT_FILE)
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer | fgrep -v -f $(CURDIR)/dialyzer.ignore
 
 xref: $(REBAR)
@@ -129,3 +131,6 @@ tags:
 
 $(COVERDATA):
 	@$(MAKE) test
+
+$(PLT_FILE):
+	@REBAR_PROFILE=dev $(REBAR) do dialyzer || true

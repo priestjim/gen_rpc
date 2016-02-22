@@ -16,3 +16,14 @@
 -define(SLAVE2, 'gen_rpc_slave2@127.0.0.1').
 
 -define(FAKE_NODE, 'fake_node@127.0.1.1').
+-define(TEST_APPLICATION_ENV, [{sasl, errlog_type, error},
+        {sasl, error_logger_mf_dir, false},
+        {gen_rpc, connect_timeout, 500},
+        {gen_rpc, send_timeout, 500},
+        {lager, colored, true},
+        {lager, handlers, [
+            {lager_file_backend, [{file, "messages.log"}, {level, info}, {formatter, lager_default_formatter}, {size, 0}, {date, "$D0"}, {count, 7},
+                {formatter_config, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}
+            ]}
+        ]}
+]).
