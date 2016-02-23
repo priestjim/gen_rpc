@@ -190,10 +190,10 @@ async_call(Node, M, F)->
 %% Simple server async_call with args
 async_call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     ReplyTo = self(),
-    spawn(fun()->
-              Reply = call(Node, M, F, A, undefined, undefined),
-              ReplyTo ! {self(), {promise_reply, Reply}}
-          end).
+    erlang:spawn(fun() ->
+        Reply = call(Node, M, F, A, undefined, undefined),
+        ReplyTo ! {self(), {promise_reply, Reply}}
+    end).
 
 %% Simple server yield with key. Delegate to nb_yield. Default timeout form configuration.
 yield(Key)->
@@ -219,7 +219,7 @@ nb_yield(Key, Timeout) when is_pid(Key), ?is_timeout(Timeout) ->
                     {value, Reply};
                 UnknownMsg ->
                     ok = lager:notice("function=nb_yield event=unknown_msg yield_key=\"~p\" message=\"~p\"", [Key, UnknownMsg]),
-                    timeout
+                    {value, {badrpc, invalid_message_received}}
             after Timeout ->
                     ok = lager:notice("function=nb_yield event=async_call_timeout yield_key=\"~p\"", [Key]),
                     timeout

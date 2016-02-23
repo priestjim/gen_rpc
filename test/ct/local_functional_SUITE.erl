@@ -44,6 +44,11 @@ init_per_testcase(server_inactivity_timeout, Config) ->
     ok = application:set_env(?APP, server_inactivity_timeout, 500),
     Config;
 
+init_per_testcase(async_call_inexistent_node, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    Config;
+
 init_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:start_slave(?SLAVE),
     Config;
@@ -52,14 +57,10 @@ init_per_testcase(_OtherTest, Config) ->
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     Config;
 
 end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
     ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
 
@@ -271,9 +272,11 @@ async_call_nb_yield_infinity(_Config) ->
 async_call_inexistent_node(_Config) ->
     ok = ct:pal("Testing [async_call_inexistent_node]"),
     YieldKey1 = gen_rpc:async_call(?FAKE_NODE, os, timestamp, []),
-    {badrpc, nodedown} = gen_rpc:yield(YieldKey1),
+    ok = timer:sleep(100), % Give some time for the function to fail
+    {badrpc, _} = gen_rpc:yield(YieldKey1),
     YieldKey2 = gen_rpc:async_call(?FAKE_NODE, os, timestamp, []),
-    {badrpc, nodedown} = gen_rpc:nb_yield(YieldKey2, 5000).
+    ok = timer:sleep(100), % Give some time for the function to fail
+    {value, {badrpc, _}} = gen_rpc:nb_yield(YieldKey2, 10000).
 
 client_inactivity_timeout(_Config) ->
     ok = ct:pal("Testing [client_inactivity_timeout]"),
