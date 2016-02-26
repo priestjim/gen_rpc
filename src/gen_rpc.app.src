@@ -20,7 +20,9 @@
         %% Inactivity timeout for client gen_server
         {client_inactivity_timeout, infinity},
         %% Inactivity timeout for server gen_server
-        {server_inactivity_timeout, infinity}
+        {server_inactivity_timeout, infinity},
+        %% Orphan async call process timeout
+        {async_call_inactivity_timeout, infinity}
     ]},
     {modules, []}]
 }.

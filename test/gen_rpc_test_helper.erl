@@ -74,12 +74,20 @@ get_test_functions(Module) ->
     [FName || {FName, _} <- lists:filter(
                                fun ({module_info,_}) -> false;
                                    ({all,_}) -> false;
-                                   ({init_per_suite,1}) -> false;
-                                   ({end_per_suite,1}) -> false;
-                                   ({interleaved_call_proc,3}) -> false;
-                                   ({wait_for_reply,1}) -> false;
-                                   ({terminate_process,1}) -> false;
-                                   ({interleaved_call_executor,1}) -> false;
+                                   %% Local tests
+                                   ({init_per_suite,_}) -> false;
+                                   ({end_per_suite,_}) -> false;
+                                   ({interleaved_call_proc,_}) -> false;
+                                   ({interleaved_call_executor,_}) -> false;
+                                   ({interleaved_call_loop,_}) -> false;
+                                   %% Multi RPC
+                                   ({spawn_listener,_}) -> false;
+                                   ({spawn_listener2,_}) -> false;
+                                   ({loop1,_}) -> false;
+                                   ({loop2,_}) -> false;
+                                   ({wait_for_reply,_}) -> false;
+                                   ({terminate_process,_}) -> false;
+                                   %% Else
                                    ({_,1}) -> true;
                                    ({_,_}) -> false
                                end, Functions)].

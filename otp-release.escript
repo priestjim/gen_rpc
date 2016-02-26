@@ -1,12 +1,12 @@
 #!/usr/bin/env escript
 main(_Options) ->
-    OtpRelease = otp_release1(erlang:system_info(otp_release)),
+    OtpRelease = otp_release(erlang:system_info(otp_release)),
     ok = io:format("~s", [OtpRelease]).
 
 %% Copied from https://github.com/rebar/rebar3/blob/master/src/rebar_utils.erl
-otp_release1([$R,N|_]=Rel) when is_integer(N) ->
+otp_release([$R,N|_]=Rel) when is_integer(N) ->
     Rel;
-otp_release1(Rel) ->
+otp_release(Rel) ->
     File = filename:join([code:root_dir(), "releases", Rel, "OTP_VERSION"]),
     case file:read_file(File) of
         {error, _} ->
