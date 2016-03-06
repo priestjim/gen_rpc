@@ -1,12 +1,12 @@
 sudo: false
 language: erlang
 otp_release:
-  - 18.2.4
-  - 17.5.6.8
+  - "18.2.1"
+  - "17.5"
 cache:
   directories:
-  - $HOME/otp/18.2.4
-  - $HOME/otp/17.5.6.8
+  - $HOME/otp/18.2.1
+  - $HOME/otp/17.5
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
@@ -15,7 +15,6 @@ branches:
   only:
     - master
     - develop
-
 notifications:
   email:
     - priestjim@gmail.com
