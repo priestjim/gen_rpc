@@ -1,4 +1,4 @@
-defmodule FS.Mixfile do
+defmodule GenRPC.Mixfile do
   use Mix.Project
 
   def project do

@@ -64,47 +64,47 @@ get_port(Pid) when is_pid(Pid) ->
 %%% ===================================================
 -spec init({node()}) -> {'ok', #state{}} | {'stop', any()}.
 init({Node}) ->
-    ok = lager:info("function=init client_node=\"~s\"", [Node]),
+    ok = lager:info("event=start client_node=\"~s\"", [Node]),
     _ = process_flag(trap_exit, true),
     ClientIp = get_remote_node_ip(Node),
     case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
-            ok = lager:info("function=init event=listener_started_successfully client_node=\"~s\"", [Node]),
+            ok = lager:info("event=listener_started_successfully client_node=\"~s\"", [Node]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
             {ok, #state{client_ip = ClientIp,
                         client_node = Node,
                         socket = Socket,
                         acceptor = Ref}};
         {error, Reason} ->
-            ok = lager:critical("function=init event=failed_to_start_listener client_node=\"~s\" reason=\"~p\"", [Node, Reason]),
+            ok = lager:critical("event=failed_to_start_listener client_node=\"~s\" reason=\"~p\"", [Node, Reason]),
             {stop, Reason}
     end.
 
 %% Returns the dynamic port the current TCP server listens to
 handle_call(get_port, _From, #state{socket=Socket} = State) ->
     {ok, Port} = inet:port(Socket),
-    ok = lager:debug("function=handle_call message=get_port socket=\"~p\" port=~B", [Socket,Port]),
+    ok = lager:debug("message=get_port socket=\"~p\" port=~B", [Socket,Port]),
     {reply, {ok, Port}, State};
 
 %% Gracefully stop
 handle_call(stop, _From, State) ->
-    ok = lager:debug("function=handle_call message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
+    ok = lager:debug("message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _From, State) ->
-    ok = lager:critical("function=handle_call event=unknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = lager:critical("event=unknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->
-    ok = lager:critical("function=handle_cast event=unknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = lager:critical("event=unknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
     {stop, {unknown_cast, Msg}, State}.
 
 handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
             #state{client_ip=ClientIp, client_node=Node, socket=ListSock, acceptor=Ref} = State) ->
     try
-        ok = lager:info("function=handle_info event=client_connection_received client_ip=\"~p\" client_node=\"~s\" socket=\"~p\" action=starting_acceptor",
+        ok = lager:info("event=client_connection_received client_ip=\"~p\" client_node=\"~s\" socket=\"~p\" action=starting_acceptor",
                           [ClientIp, Node, ListSock]),
         %% Start an acceptor process. We need to provide the acceptor
         %% process with our designated node IP and name so enforcement
@@ -129,31 +129,31 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         end
     catch
         exit:ExitReason ->
-            ok = lager:error("function=handle_info message=inet_async event=unknown_error socket=\"~p\" error=\"~p\" action=stopping",
+            ok = lager:error("message=inet_async event=unknown_error socket=\"~p\" error=\"~p\" action=stopping",
                             [ListSock, ExitReason]),
             {stop, ExitReason, State}
     end;
 
 %% Handle async socket errors gracefully
 handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=Ref} = State) ->
-    ok = lager:error("function=handle_info message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
+    ok = lager:error("message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
                     [ListSock, Error]),
     {stop, Error, State};
 
 %% Handle exit messages from our acceptor gracefully
 handle_info({'EXIT', AccPid, Reason}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
-    ok = lager:notice("function=handle_info message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
+    ok = lager:notice("message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
                     [Socket, AccPid, Reason]),
     {stop, Reason, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
-    ok = lager:critical("function=handle_info event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
     {stop, {unknown_message, Msg}, State}.
 
 %% Terminate cleanly by closing the listening socket
 terminate(_Reason, #state{socket=Socket}) ->
-    ok = lager:debug("function=terminate socket=\"~p\"", [Socket]),
+    ok = lager:debug("socket=\"~p\"", [Socket]),
     _Pid = erlang:spawn(gen_rpc_server_sup, stop_child, [self()]),
     ok.
 
@@ -193,5 +193,5 @@ get_remote_node_ip(Node) ->
     {ok, NodeInfo} = net_kernel:node_info(Node),
     {address, AddressInfo} = lists:keyfind(address, 1, NodeInfo),
     {net_address, {Ip, _Port}, _Name, _Proto, _Channel} = AddressInfo,
-    ok = lager:debug("function=get_remote_node_ip node=\"~s\" ip_address=\"~p\"", [Node, Ip]),
+    ok = lager:debug("node=\"~s\" ip_address=\"~p\"", [Node, Ip]),
     Ip.

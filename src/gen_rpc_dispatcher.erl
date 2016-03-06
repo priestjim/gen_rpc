@@ -41,45 +41,45 @@ start_client(Node) when is_atom(Node) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init([]) ->
-    ok = lager:info("function=init"),
+    ok = lager:info("event=start"),
     process_flag(trap_exit, true),
-    {ok, no_state}.
+    {ok, undefined}.
 
 %% Simply launch a connection to a node through the appropriate
 %% supervisor. This is a serialization interface so that
-handle_call({start_client, Node}, _Caller, no_state) ->
+handle_call({start_client, Node}, _Caller, undefined) ->
     Reply = case whereis(Node) of
         undefined ->
-            ok = lager:debug("function=handle_call message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
+            ok = lager:debug("message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
             gen_rpc_client_sup:start_child(Node);
         Pid ->
-            ok = lager:debug("function=handle_call message=start_client event=node_already_started server_node=\"~s\"", [Node]),
+            ok = lager:debug("message=start_client event=node_already_started server_node=\"~s\"", [Node]),
             {ok, Pid}
     end,
-    {reply, Reply, no_state};
+    {reply, Reply, undefined};
 
 %% Gracefully terminate
-handle_call(stop, _Caller, no_state) ->
-    {stop, normal, ok, no_state};
+handle_call(stop, _Caller, undefined) ->
+    {stop, normal, ok, undefined};
 
 %% Catch-all for calls - die if we get a message we don't expect
-handle_call(Msg, _Caller, no_state) ->
-    ok = lager:critical("function=handle_call event=uknown_call_received message=\"~p\" action=stopping", [Msg]),
-    {stop, {unknown_call, Msg}, no_state}.
+handle_call(Msg, _Caller, undefined) ->
+    ok = lager:critical("event=uknown_call_received message=\"~p\" action=stopping", [Msg]),
+    {stop, {unknown_call, Msg}, undefined}.
 
 %% Catch-all for casts - die if we get a message we don't expect
-handle_cast(Msg, no_state) ->
-    ok = lager:critical("function=handle_call event=uknown_cast_received message=\"~p\" action=stopping", [Msg]),
-    {stop, {unknown_cast, Msg}, no_state}.
+handle_cast(Msg, undefined) ->
+    ok = lager:critical("event=uknown_cast_received message=\"~p\" action=stopping", [Msg]),
+    {stop, {unknown_cast, Msg}, undefined}.
 
 %% Catch-all for info - our protocol is strict so die!
-handle_info(Msg, no_state) ->
-    ok = lager:critical("function=handle_info event=uknown_message_received message=\"~p\" action=stopping", [Msg]),
-    {stop, {unknown_info, Msg}, no_state}.
+handle_info(Msg, undefined) ->
+    ok = lager:critical("event=uknown_message_received message=\"~p\" action=stopping", [Msg]),
+    {stop, {unknown_info, Msg}, undefined}.
 
-code_change(_OldVersion, no_state, _Extra) ->
-    {ok, no_state}.
+code_change(_OldVersion, undefined, _Extra) ->
+    {ok, undefined}.
 
-terminate(Reason, no_state) ->
-    ok = lager:debug("function=terminate reason=\"~512tp\"", [Reason]),
+terminate(Reason, undefined) ->
+    ok = lager:debug("reason=\"~512tp\"", [Reason]),
     ok.

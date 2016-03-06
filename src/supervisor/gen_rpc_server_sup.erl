@@ -19,13 +19,14 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link() -> supervisor:startlink_ret().
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% Launch a local receiver and return the port
 -spec start_child(Node::node()) -> {'ok', inet:port_number()} | {ok, _}.
 start_child(Node) when is_atom(Node) ->
-    ok = lager:debug("function=start_child event=starting_new_server client_node=\"~s\"", [Node]),
+    ok = lager:debug("event=starting_new_server client_node=\"~s\"", [Node]),
     {ok, Pid} = case supervisor:start_child(?MODULE, [Node]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
@@ -42,12 +43,11 @@ start_child(Node) when is_atom(Node) ->
 %% Terminate and unregister a child server
 -spec stop_child(Pid::pid()) -> 'ok'.
 stop_child(Pid) when is_pid(Pid) ->
-    ok = lager:debug("function=stop_child event=stopping_server server_pid=\"~p\"", [Pid]),
+    ok = lager:debug("event=stopping_server server_pid=\"~p\"", [Pid]),
     %% Terminate the acceptor child first and then
     _ = supervisor:terminate_child(?MODULE, Pid),
     _ = supervisor:delete_child(?MODULE, Pid),
     ok.
-
 
 %%% ===================================================
 %%% Supervisor callbacks

@@ -7,9 +7,15 @@
 -module(gen_rpc_helper).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
+%%% Include this library's name macro
 -include("app.hrl").
 
+%%% Public API
 -export([otp_release/0, default_tcp_opts/1, make_process_name/2]).
+
+%%% ===================================================
+%%% Public API
+%%% ===================================================
 
 -spec otp_release() -> integer().
 otp_release() ->

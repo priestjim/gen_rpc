@@ -23,7 +23,8 @@
         {lager, colored, true},
         {lager, handlers, [
             {lager_file_backend, [{file, "messages.log"}, {level, info}, {formatter, lager_default_formatter}, {size, 0}, {date, "$D0"}, {count, 7},
-                {formatter_config, ["[", date, " ", time, "] severity=", severity, " module=", {module, "gen_rpc"}, " pid=\"", pid, "\" ", message, "\n"]}
+                {formatter_config, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
+                    "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}
             ]}
         ]}
 ]).

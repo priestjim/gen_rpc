@@ -8,27 +8,22 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Library interface
--export([async_call/3,
-        async_call/4,
-        call/3,
-        call/4,
-        call/5,
-        call/6,
-        cast/3,
-        cast/4,
-        cast/5,
-        eval_everywhere/3,
-        eval_everywhere/4,
-        eval_everywhere/5,
-        yield/1,
-        nb_yield/1,
-        nb_yield/2,
-        safe_cast/3,
-        safe_cast/4,
-        safe_cast/5,
-        safe_eval_everywhere/3,
-        safe_eval_everywhere/4,
-        safe_eval_everywhere/5]).
+-export([call/3, call/4, call/5, call/6]).
+
+%% Async calls
+-export([async_call/3, async_call/4, yield/1, nb_yield/1, nb_yield/2]).
+
+%% Cast and safe_cast
+-export([cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
+
+%% Parallel evaluation
+-export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5, safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
+
+%% Parallel sync call
+-export([multicall/3, multicall/4, multicall/5]).
+
+%% Misc functions
+-export([nodes/0]).
 
 %%% ===================================================
 %%% Library interface
@@ -71,23 +66,14 @@ cast(Node, M, F, A) ->
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes.
-%% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function()) -> 'abcast'.
 eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
-%% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) -> 'abcast'.
 eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
-%% The function returns immediately after sending request. No answers, warnings or errors are collected.
-%% It's fire and forget
 -spec eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list(), SendTO::timeout()) -> 'abcast'.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A, SendTO).
@@ -104,33 +90,42 @@ safe_cast(Node, M, F, A) ->
 safe_cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function) on the specified nodes.
-%% The function returns list of nodes that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function()) -> ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
-%% The function returns list of nodes that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list()) ->  ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A).
 
-%% @doc Evaluates asynchronously apply(Nodes, Module, Function, Args) on the specified nodes.
-%% The function returns list of that succeeded or errored out.
 -spec safe_eval_everywhere(Nodes::[node()], M::module(), F::atom()|function(), A::list(), SendTO::timeout()) ->  ['true'  | [node()]].
 safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A, SendTO).
 
--spec yield(Key::pid()) -> term() | {badrpc, term()}.
+-spec yield(Key::tuple()) -> term() | {badrpc, term()}.
 yield(Key) ->
     gen_rpc_client:yield(Key).
 
--spec nb_yield(Key::pid()) -> {value, term()} | {badrpc, term()}.
+-spec nb_yield(Key::tuple()) -> {value, term()} | {badrpc, term()}.
 nb_yield(Key) ->
     gen_rpc_client:nb_yield(Key).
 
--spec nb_yield(Key::pid(), Timeout::timeout()) -> {value, term()} | {badrpc, term()}.
+-spec nb_yield(Key::tuple(), Timeout::timeout()) -> {value, term()} | {badrpc, term()}.
 nb_yield(Key, Timeout) ->
     gen_rpc_client:nb_yield(Key, Timeout).
 
+-spec multicall(M::module(), F::atom(), A::list()) -> {list(), list()}.
+multicall(M, F, A) ->
+    gen_rpc_client:multicall(M, F, A).
+
+-spec multicall(NodesOrModule::list() | module(), MorF::module() | atom(), ForA::atom() | list(), AorTimeout::list() | timeout()) -> {list(), list()}.
+multicall(NodesOrModule, MorF, ForA, AorTimeout) ->
+    gen_rpc_client:multicall(NodesOrModule, MorF, ForA, AorTimeout).
+
+-spec multicall(Nodes::list(), M::module(), F::atom(), A::list(), Timeout::timeout()) -> {list(), list()}.
+multicall(Nodes, M, F, A, Timeout) ->
+    gen_rpc_client:multicall(Nodes, M, F, A, Timeout).
+
+-spec nodes() -> list().
+nodes() ->
+    gen_rpc_client_sup:children_names().

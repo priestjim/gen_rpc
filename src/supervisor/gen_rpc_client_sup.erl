@@ -11,7 +11,7 @@
 -behaviour(supervisor).
 
 %%% Supervisor functions
--export([start_link/0, start_child/1, stop_child/1]).
+-export([start_link/0, start_child/1, stop_child/1, children_names/0]).
 
 %%% Supervisor callbacks
 -export([init/1]).
@@ -19,12 +19,13 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link() -> supervisor:startlink_ret().
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 -spec start_child(Node::node()) ->  supervisor:startchild_ret().
 start_child(Node) when is_atom(Node) ->
-    ok = lager:debug("function=start_child event=starting_new_client server_node=\"~s\"", [Node]),
+    ok = lager:debug("event=starting_new_client server_node=\"~s\"", [Node]),
     case supervisor:start_child(?MODULE, [Node]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
@@ -38,10 +39,20 @@ start_child(Node) when is_atom(Node) ->
 
 -spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
-    ok = lager:debug("function=stop_child event=stopping_client client_pid=\"~p\"", [Pid]),
+    ok = lager:debug("event=stopping_client client_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
     _ = supervisor:delete_child(?MODULE, Pid),
     ok.
+
+-spec children_names() -> list().
+children_names() ->
+    lists:foldl(fun({_,Pid,_,_}, Acc) ->
+        {_, Name} = erlang:process_info(Pid, registered_name),
+        case Name of
+            Name when Name =:= node() -> Acc; %% Skip the local node
+            _Else -> [Name|Acc]
+        end
+    end, [], supervisor:which_children(?MODULE)).
 
 %%% ===================================================
 %%% Supervisor callbacks
