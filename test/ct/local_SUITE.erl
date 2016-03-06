@@ -26,7 +26,6 @@ init_per_suite(Config) ->
     ok = gen_rpc_test_helper:set_application_environment(),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
-    ok = ct:pal("Started [local_functional] suite with master node [~s]", [node()]),
     Config.
 
 end_per_suite(_Config) ->

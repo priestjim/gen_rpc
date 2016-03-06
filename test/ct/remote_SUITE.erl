@@ -26,7 +26,6 @@ init_per_suite(Config) ->
     ok = gen_rpc_test_helper:set_application_environment(),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
-    ok = ct:pal("Started [remote_functional] suite with master node [~s]", [node()]),
     Config.
 
 end_per_suite(_Config) ->
@@ -72,31 +71,25 @@ end_per_testcase(_OtherTest, Config) ->
 %%% ===================================================
 %% Test main functions
 call(_Config) ->
-    ok = ct:pal("Testing [call]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
 
 call_mfa_undef(_Config) ->
-    ok = ct:pal("Testing [call_mfa_undef]"),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?SLAVE, os, timestamp_undef),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 call_mfa_exit(_Config) ->
-    ok = ct:pal("Testing [call_mfa_exit]"),
     {badrpc, {'EXIT', die}} = gen_rpc:call(?SLAVE, erlang, exit, ['die']),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_mfa_throw(_Config) ->
-    ok = ct:pal("Testing [call_mfa_throw]"),
     'throwXdown' = gen_rpc:call(?SLAVE, erlang, throw, ['throwXdown']),
     ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
 
 call_with_receive_timeout(_Config) ->
-    ok = ct:pal("Testing [call_with_receive_timeout]"),
     {badrpc, timeout} = gen_rpc:call(?SLAVE, timer, sleep, [500], 1),
     ok = timer:sleep(500).
 
 interleaved_call(_Config) ->
-    ok = ct:pal("Testing [interleaved_call]"),
     %% Spawn 3 consecutive processes that execute gen_rpc:call
     %% to the remote node and wait an inversely proportionate time
     %% for their result (effectively rendering the results out of order)
@@ -108,55 +101,42 @@ interleaved_call(_Config) ->
     ok.
 
 cast(_Config) ->
-    ok = ct:pal("Testing [cast]"),
     true = gen_rpc:cast(?SLAVE, erlang, timestamp).
 
 cast_anonymous_function(_Config) ->
-    ok = ct:pal("Testing [cast_anonymous_function]"),
     true = gen_rpc:cast(?SLAVE, erlang, apply, [fun() -> os:timestamp() end, []]).
 
 cast_mfa_undef(_Config) ->
-    ok = ct:pal("Testing [cast_mfa_undef]"),
     true = gen_rpc:cast(?SLAVE, os, timestamp_undef, []).
 
 cast_mfa_exit(_Config) ->
-    ok = ct:pal("Testing [cast_mfa_exit]"),
     true = gen_rpc:cast(?SLAVE, erlang, apply, [fun() -> exit(die) end, []]).
 
 cast_mfa_throw(_Config) ->
-    ok = ct:pal("Testing [cast_mfa_throw]"),
     true = gen_rpc:cast(?SLAVE, erlang, throw, ['throwme']).
 
 cast_inexistent_node(_Config) ->
-    ok = ct:pal("Testing [cast_inexistent_node]"),
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 safe_cast(_Config) ->
-    ok = ct:pal("Testing [safe_cast]"),
     true = gen_rpc:safe_cast(?SLAVE, erlang, timestamp).
 
 safe_cast_anonymous_function(_Config) ->
-    ok = ct:pal("Testing [safe_cast_anonymous_function]"),
     true = gen_rpc:safe_cast(?SLAVE, erlang, apply, [fun() -> os:timestamp() end, []]).
 
 safe_cast_mfa_undef(_Config) ->
-    ok = ct:pal("Testing [safe_cast_mfa_undef]"),
     true = gen_rpc:safe_cast(?SLAVE, os, timestamp_undef, []).
 
 safe_cast_mfa_exit(_Config) ->
-    ok = ct:pal("Testing [safe_cast_mfa_exit]"),
     true = gen_rpc:safe_cast(?SLAVE, erlang, apply, [fun() -> exit(die) end, []]).
 
 safe_cast_mfa_throw(_Config) ->
-    ok = ct:pal("Testing [safe_cast_mfa_throw]"),
     true = gen_rpc:safe_cast(?SLAVE, erlang, throw, ['throwme']).
 
 safe_cast_inexistent_node(_Config) ->
-    ok = ct:pal("Testing [safe_cast_inexistent_node]"),
     {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 async_call(_Config) ->
-    ok = ct:pal("Testing [async_call]"),
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     NbYieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
@@ -167,7 +147,6 @@ async_call(_Config) ->
     {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 10).
 
 async_call_yield_reentrant(_Config) ->
-    ok = ct:pal("Testing [async_call_yield_reentrant]"),
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     Self = self(),
@@ -192,7 +171,6 @@ async_call_yield_reentrant(_Config) ->
     {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 10).
 
 async_call_mfa_undef(_Config) ->
-    ok = ct:pal("Testing [async_call_mfa_undef]"),
     YieldKey = gen_rpc:async_call(?SLAVE, os, timestamp_undef),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, os, timestamp_undef),
@@ -200,7 +178,6 @@ async_call_mfa_undef(_Config) ->
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_exit(_Config) ->
-    ok = ct:pal("Testing [async_call_mfa_exit]"),
     YieldKey = gen_rpc:async_call(?SLAVE, erlang, exit, ['die']),
     {badrpc, {'EXIT', die}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, erlang, exit, ['die']),
@@ -208,7 +185,6 @@ async_call_mfa_exit(_Config) ->
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_throw(_Config) ->
-    ok = ct:pal("Testing [async_call_mfa_throw]"),
     YieldKey = gen_rpc:async_call(?SLAVE, erlang, throw, ['throwXdown']),
     'throwXdown' = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, erlang, throw, ['throwXdown']),
@@ -216,13 +192,11 @@ async_call_mfa_throw(_Config) ->
     ok = ct:pal("Result [async_call_mfa_undef]: throw Reason={throwXdown}").
 
 async_call_yield_timeout(_Config) ->
-    ok = ct:pal("Testing [async_call_yield_timeout]"),
     NBYieldKey = gen_rpc:async_call(?SLAVE, timer, sleep, [1000]),
     timeout = gen_rpc:nb_yield(NBYieldKey, 5),
     ok = ct:pal("Result [async_call_yield_timeout]: signal=badrpc Reason={timeout}").
 
 async_call_nb_yield_infinity(_Config) ->
-    ok = ct:pal("Testing [async_call_yield_infinity]"),
     YieldKey = gen_rpc:async_call(?SLAVE, timer, sleep, [1000]),
     ok = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, timer, sleep, [1000]),
@@ -230,14 +204,12 @@ async_call_nb_yield_infinity(_Config) ->
     ok = ct:pal("Result [async_call_yield_infinity]: timer_sleep Result={ok}").
 
 client_inactivity_timeout(_Config) ->
-    ok = ct:pal("Testing [client_inactivity_timeout]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
     %% Lookup the client named process, shouldn't be undefined. Rewrite/Remove test?
     undefined =:= whereis(?SLAVE).
 
 server_inactivity_timeout(_Config) ->
-    ok = ct:pal("Testing [server_inactivity_timeout]"),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
     %% Lookup the client named process, shouldn't be there
