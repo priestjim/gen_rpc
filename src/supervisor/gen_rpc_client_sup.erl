@@ -37,7 +37,7 @@ start_child(Node) when is_atom(Node) ->
             {ok, Pid}
     end.
 
--spec stop_child(Pid::pid()) ->  'ok'.
+-spec stop_child(Pid::pid()) ->  ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_client client_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),

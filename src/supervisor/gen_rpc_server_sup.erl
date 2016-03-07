@@ -24,7 +24,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% Launch a local receiver and return the port
--spec start_child(Node::node()) -> {'ok', inet:port_number()} | {ok, _}.
+-spec start_child(Node::node()) -> {ok, inet:port_number()} | {ok, _}.
 start_child(Node) when is_atom(Node) ->
     ok = lager:debug("event=starting_new_server client_node=\"~s\"", [Node]),
     {ok, Pid} = case supervisor:start_child(?MODULE, [Node]) of
@@ -41,7 +41,7 @@ start_child(Node) when is_atom(Node) ->
     {ok, Port}.
 
 %% Terminate and unregister a child server
--spec stop_child(Pid::pid()) -> 'ok'.
+-spec stop_child(Pid::pid()) -> ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_server server_pid=\"~p\"", [Pid]),
     %% Terminate the acceptor child first and then

@@ -27,13 +27,15 @@
 %%% ===================================================
 %%% Public API
 %%% ===================================================
-
+-spec start_link() -> gen_server:startlink_ret().
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, [], []).
 
+-spec stop() -> ok.
 stop() ->
     gen_server:call(?MODULE, stop, infinity).
 
+-spec start_client(node()) -> {ok, pid()} | {error, any()}.
 start_client(Node) when is_atom(Node) ->
     gen_server:call(?MODULE, {start_client,Node}, infinity).
 

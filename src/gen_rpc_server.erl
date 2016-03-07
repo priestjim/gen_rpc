@@ -45,24 +45,26 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link(node()) -> gen_server:startlink_ret().
 start_link(Node) when is_atom(Node) ->
     Name = gen_rpc_helper:make_process_name(server, Node),
     gen_server:start_link({local,Name}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
 
+-spec stop(pid()) -> ok.
 stop(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, stop).
 
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
--spec get_port(pid()) -> {'ok', inet:port_number()} | {'error', term()} | term(). %dialyzer complains without term().
+-spec get_port(pid()) -> {ok, inet:port_number()} | {error, term()} | term(). %dialyzer complains without term().
 get_port(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, get_port).
 
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
--spec init({node()}) -> {'ok', #state{}} | {'stop', any()}.
+-spec init({node()}) -> {ok, #state{}} | {'stop', any()}.
 init({Node}) ->
     ok = lager:info("event=start client_node=\"~s\"", [Node]),
     _ = process_flag(trap_exit, true),

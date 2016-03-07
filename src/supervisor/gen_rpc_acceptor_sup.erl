@@ -23,6 +23,7 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+-spec start_child(inet:ip4_address(), node()) -> {ok, pid()} | {error, any()}.
 start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
     ok = lager:debug("event=starting_new_acceptor client_ip=\"~p\" client_node=\"~s\"", [ClientIp, Node]),
     case supervisor:start_child(?MODULE, [ClientIp, Node]) of
@@ -36,7 +37,7 @@ start_child(ClientIp, Node) when is_tuple(ClientIp), is_atom(Node) ->
             {ok, Pid}
     end.
 
--spec stop_child(Pid::pid()) ->  'ok'.
+-spec stop_child(Pid::pid()) ->  ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),

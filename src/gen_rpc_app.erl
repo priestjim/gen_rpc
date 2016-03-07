@@ -22,21 +22,21 @@
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
--spec start(_,_) -> {'error',_} | {'ok',pid()} | {'ok',pid(),_}.
+-spec start(application:start_type(),any()) -> {error,any()} | {ok,pid()} | {ok,pid(),any()}.
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
--spec stop(_) -> 'ok'.
+-spec stop(any()) -> ok.
 stop(_State) ->
     ok.
 
 %%% ===================================================
 %%% Development functions
 %%% ===================================================
--spec start() -> 'ok' | {'error', term()}.
+-spec start() -> ok | {error, term()}.
 start() ->
     application:start(?APP).
 
--spec stop() -> 'ok' | {'error', term()}.
+-spec stop() -> ok | {error, term()}.
 stop() ->
     application:stop(?APP).
