@@ -74,6 +74,7 @@ waiting_for_socket({socket_ready, Socket}, #state{client_ip=ClientIp} = State) -
         ClientIp =/= Ip ->
             ok = lager:notice("event=rejecting_unauthorized_connection socket=\"~p\" client_ip=\"~p\" connected_ip=\"~p\"",
                               [Socket, ClientIp, Ip]),
+            ok = harakiri(),
             {stop, {badtcp,invalid_client_ip}, State};
         true ->
             % Now we own the socket
@@ -103,28 +104,33 @@ waiting_for_data({data, Data}, #state{socket=Socket,client_node=Node} = State) -
         OtherData ->
             ok = lager:debug("event=erroneous_data_received socket=\"~p\" node=\"~s\" data=\"~p\"",
                              [Socket, Node, OtherData]),
+            ok = harakiri(),
             {stop, {badrpc, erroneous_data}, State}
     catch
         error:badarg ->
+            ok = harakiri(),
             {stop, {badtcp, corrupt_data}, State}
     end;
 %% Handle the inactivity timeout gracefully
 waiting_for_data(timeout, State) ->
     ok = lager:info("message=timeout event=server_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
-    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    ok = harakiri(),
     {stop, normal, State}.
 
 handle_event(Event, StateName, State) ->
     ok = lager:critical("socket=\"~p\" event=uknown_event payload=\"~p\" action=stopping", [State#state.socket, Event]),
+    ok = harakiri(),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Gracefully terminate
 handle_sync_event(stop, _From, _StateName, State) ->
     ok = lager:debug("message=stop event=stopping_acceptor socket=\"~p\"", [State#state.socket]),
+    ok = harakiri(),
     {stop, normal, ok, State};
 
 handle_sync_event(Event, _From, StateName, State) ->
     ok = lager:critical("event=uknown_event socket=\"~p\" payload=\"~p\" action=stopping", [State#state.socket, Event]),
+    ok = harakiri(),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Incoming data handlers
@@ -142,12 +148,14 @@ when Socket =/= undefined, CallReply =:= call_reply orelse CallReply =:= async_c
             {next_state, waiting_for_data, State, State#state.inactivity_timeout};
         {error, Reason} ->
             ok = lager:error("message=call_reply event=failed_to_send_call_reply socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+            ok = harakiri(),
             {stop, {badtcp, Reason}, State}
     end;
 
 handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
     ok = lager:notice("message=tcp_closed event=tcp_socket_closed socket=\"~p\" client_node=\"~s\" action=stopping",
                       [Socket, Node]),
+    ok = harakiri(),
     {stop, normal, State};
 
 handle_info({tcp_error, Socket, Reason}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
@@ -158,6 +166,7 @@ handle_info({tcp_error, Socket, Reason}, _StateName, #state{socket=Socket,client
 %% Handle VM node down information
 handle_info({nodedown, Node, [{nodedown_reason,Reason}]}, _StateName, #state{socket=Socket,client_node=Node} = State) ->
     ok = lager:warning("message=nodedown event=node_down socket=\"~p\" node=~s reason=\"~p\" action=stopping", [Socket, Node, Reason]),
+    ok = harakiri(),
     {stop, normal, State};
 
 %% Stub for other node information
@@ -167,6 +176,7 @@ handle_info({NodeEvent, _Node, _InfoList}, StateName, State) when NodeEvent =:= 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, StateName, State) ->
     ok = lager:critical("socket=\"~p\" event=uknown_event action=stopping", [State#state.socket]),
+    ok = harakiri(),
     {stop, {StateName, unknown_message, Msg}, State}.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -174,17 +184,20 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 %% Terminate normally if we haven't received the socket yet
 terminate(_Reason, _StateName, #state{socket=undefined}) ->
-    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    ok = harakiri(),
     ok;
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    ok = harakiri(),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+harakiri() ->
+    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    ok.
 
 %% Process an RPC call request outside of the FSM
 call_worker(Parent, CallType, WorkerPid, Ref, M, F, A) ->

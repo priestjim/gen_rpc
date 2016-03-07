@@ -289,11 +289,13 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
                 {error, timeout} ->
                     ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
                                      [Socket, Ref]),
+                    ok = harakiri(),
                     %% Reply will be handled from the worker
                     {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
                 {error, Reason} ->
                     ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"~p\"",
                                      [Socket, Ref, Reason]),
+                    ok = harakiri(),
                     %% Reply will be handled from the worker
                     {stop, {badtcp,Reason}, {badtcp,Reason}, State};
                 ok ->
@@ -307,6 +309,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
         _Else ->
             ok = lager:error("message=call event=node_down socket=\"~p\" call_ref=\"~p\"",
                              [Socket, Ref]),
+            ok = harakiri(),
             {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
     end;
 
@@ -314,6 +317,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
 handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Socket,server_node=Node} = State) ->
     case do_cast(PacketTuple, USendTO, Socket, Node, State) of
         {error, Error} ->
+            ok = harakiri(),
             {stop, Error, Error, State};
         ok ->
             {reply, true, State, State#state.inactivity_timeout}
@@ -333,11 +337,13 @@ handle_call({{async_call,_M,_F,_A} = PacketTuple, Ref}, {Caller,_GenRef}, #state
                 {error, timeout} ->
                     ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
                                      [Socket, Caller, Ref]),
+                    ok = harakiri(),
                     %% Reply will be handled from the worker
                     {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
                 {error, Reason} ->
                     ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
                                      [Socket, Caller, Ref, Reason]),
+                    ok = harakiri(),
                     %% Reply will be handled from the worker
                     {stop, {badtcp,Reason}, {badtcp,Reason}, State};
                 ok ->
@@ -351,23 +357,27 @@ handle_call({{async_call,_M,_F,_A} = PacketTuple, Ref}, {Caller,_GenRef}, #state
         _Else ->
             ok = lager:error("message=call event=node_down socket=\"~p\" call_ref=\"~p\"",
                              [Socket, Ref]),
+            ok = harakiri(),
             {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
     end;
 
 %% Gracefully terminate
 handle_call(stop, _Caller, State) ->
     ok = lager:debug("event=stopping_client socket=\"~p\"", [State#state.socket]),
+    ok = harakiri(),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, State) ->
     ok = lager:critical("event=uknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = harakiri(),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% This is the actual CAST handler for CAST
 handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket,server_node=Node} = State) ->
     case do_cast(PacketTuple, USendTO, Socket, Node, State) of
         {error, Error} ->
+            ok = harakiri(),
             {stop, Error, State};
         ok ->
             {noreply, State, State#state.inactivity_timeout}
@@ -376,6 +386,7 @@ handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket,serve
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->
     ok = lager:critical("event=uknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = harakiri(),
     {stop, {unknown_cast, Msg}, State}.
 
 %% Handle any TCP packet coming in
@@ -404,6 +415,7 @@ handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
 %% Handle VM node down information
 handle_info({nodedown, Node, [{nodedown_reason,Reason}]}, #state{socket=Socket,server_node=Node} = State) ->
     ok = lager:warning("message=nodedown event=node_down socket=\"~p\" node=~s reason=\"~p\" action=stopping", [Socket, Node, Reason]),
+    ok = harakiri(),
     {stop, normal, State};
 
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
@@ -412,6 +424,7 @@ handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
 
 handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
+    ok = harakiri(),
     {stop, normal, State};
 
 %% Stub for VM up information
@@ -421,11 +434,13 @@ handle_info({NodeEvent, _Node, _InfoList}, State) when NodeEvent =:= nodeup; Nod
 %% Handle the inactivity timeout gracefully
 handle_info(timeout, State) ->
     ok = lager:info("message=timeout event=client_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
+    ok = harakiri(),
     {stop, normal, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
     ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
+    ok = harakiri(),
     {stop, {unknown_info, Msg}, State}.
 
 %% Stub functions
@@ -434,12 +449,15 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
+    ok = harakiri(),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+harakiri() ->
+    _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
+    ok.
 
 %% DRY function for cast and safe_cast
 do_cast(PacketTuple, USendTO, Socket, Node, State) ->
