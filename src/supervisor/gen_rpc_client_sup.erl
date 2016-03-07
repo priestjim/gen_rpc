@@ -23,7 +23,7 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec start_child(Node::node()) ->  supervisor:startchild_ret().
+-spec start_child(node()) -> supervisor:startchild_ret().
 start_child(Node) when is_atom(Node) ->
     ok = lager:debug("event=starting_new_client server_node=\"~s\"", [Node]),
     case supervisor:start_child(?MODULE, [Node]) of
@@ -37,7 +37,7 @@ start_child(Node) when is_atom(Node) ->
             {ok, Pid}
     end.
 
--spec stop_child(Pid::pid()) ->  'ok'.
+-spec stop_child(pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_client client_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
@@ -46,11 +46,12 @@ stop_child(Pid) when is_pid(Pid) ->
 
 -spec children_names() -> list().
 children_names() ->
+    NodePid = gen_rpc_helper:make_process_name("client", node()),
     lists:foldl(fun({_,Pid,_,_}, Acc) ->
         {_, Name} = erlang:process_info(Pid, registered_name),
         case Name of
-            Name when Name =:= node() -> Acc; %% Skip the local node
-            _Else -> [Name|Acc]
+            Name when Name =:= NodePid -> Acc; %% Skip the local node
+            _Else -> [gen_rpc_helper:extract_node_name(Name)|Acc]
         end
     end, [], supervisor:which_children(?MODULE)).
 
@@ -61,3 +62,4 @@ init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
         {gen_rpc_client, {gen_rpc_client,start_link,[]}, temporary, 5000, worker, [gen_rpc_client]}
     ]}}.
+

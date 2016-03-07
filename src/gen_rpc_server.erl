@@ -16,21 +16,10 @@
 -include("app.hrl").
 
 %%% Local state
--record(state, {client_ip :: tuple(),
-        client_node :: node(),
-        socket :: port(),
+-record(state, {socket :: port(),
+        peer :: tuple(),
         acceptor_pid :: pid(),
-        acceptor :: non_neg_integer()}).
-
-%%% The TCP options that should be copied from the listener to the acceptor
--define(ACCEPTOR_TCP_OPTS, [nodelay,
-        send_timeout_close,
-        delay_send,
-        linger,
-        reuseaddr,
-        keepalive,
-        tos,
-        active]).
+        acceptor :: prim_inet:insock()}).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -45,9 +34,9 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
-start_link(Node) when is_atom(Node) ->
-    Name = gen_rpc_helper:make_process_name(server, Node),
-    gen_server:start_link({local,Name}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
+start_link(Peer) when is_tuple(Peer) ->
+    Name = gen_rpc_helper:make_process_name("server", Peer),
+    gen_server:start_link({local,Name}, ?MODULE, {Peer}, [{spawn_opt, [{priority, high}]}]).
 
 stop(Pid) when is_pid(Pid) ->
     gen_server:call(Pid, stop).
@@ -62,21 +51,18 @@ get_port(Pid) when is_pid(Pid) ->
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
--spec init({node()}) -> {'ok', #state{}} | {'stop', any()}.
-init({Node}) ->
-    ok = lager:info("event=start client_node=\"~s\"", [Node]),
-    _ = process_flag(trap_exit, true),
-    ClientIp = get_remote_node_ip(Node),
+-spec init({{inet:ip4_address(), inet:port_number()}}) -> {'ok', #state{}} | {'stop', any()}.
+init({Peer}) ->
+    _OldVal = process_flag(trap_exit, true),
     case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
-            ok = lager:info("event=listener_started_successfully client_node=\"~s\"", [Node]),
+            ok = lager:info("event=listener_started_successfully peer=\"~s\"",
+                            [gen_rpc_helper:peer_to_string(Peer)]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
-            {ok, #state{client_ip = ClientIp,
-                        client_node = Node,
-                        socket = Socket,
-                        acceptor = Ref}};
+            {ok, #state{peer=Peer, socket=Socket, acceptor=Ref}};
         {error, Reason} ->
-            ok = lager:critical("event=failed_to_start_listener client_node=\"~s\" reason=\"~p\"", [Node, Reason]),
+            ok = lager:critical("event=failed_to_start_listener peer=\"~s\" reason=\"~p\"",
+                                [gen_rpc_helper:peer_to_string(Peer), Reason]),
             {stop, Reason}
     end.
 
@@ -89,7 +75,6 @@ handle_call(get_port, _From, #state{socket=Socket} = State) ->
 %% Gracefully stop
 handle_call(stop, _From, State) ->
     ok = lager:debug("message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
-    ok = harakiri(),
     ok = harakiri(),
     {stop, normal, ok, State};
 
@@ -106,23 +91,20 @@ handle_cast(Msg, State) ->
     {stop, {unknown_cast, Msg}, State}.
 
 handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
-            #state{client_ip=ClientIp, client_node=Node, socket=ListSock, acceptor=Ref} = State) ->
+            #state{peer=Peer, socket=ListSock, acceptor=Ref} = State) ->
     try
-        ok = lager:info("event=client_connection_received client_ip=\"~p\" client_node=\"~s\" socket=\"~p\" action=starting_acceptor",
-                          [ClientIp, Node, ListSock]),
+        ok = lager:info("event=client_connection_received peer=\"~s\" socket=\"~p\" action=starting_acceptor",
+                          [gen_rpc_helper:peer_to_string(Peer), ListSock]),
         %% Start an acceptor process. We need to provide the acceptor
         %% process with our designated node IP and name so enforcement
         %% of those attributes can be made for security reasons.
-        {ok, AccPid} = gen_rpc_acceptor_sup:start_child(ClientIp, Node),
+        {ok, AccPid} = gen_rpc_acceptor_sup:start_child(Peer),
         %% Link to acceptor, if they die so should we, since we are single-receiver
         %% to single-acceptor service
         true = erlang:link(AccPid),
-        case set_sockopt(ListSock, AccSocket) of
-            ok ->
-                ok;
-            {error, Reason} ->
-                ok = harakiri(),
-                exit({set_sockopt, Reason})
+        case gen_rpc_helper:set_sock_opt(ListSock, AccSocket) of
+            ok -> ok;
+            {error, Reason} -> exit({set_sock_opt, Reason})
         end,
         ok = gen_tcp:controlling_process(AccSocket, AccPid),
         ok = gen_rpc_acceptor:set_socket(AccPid, AccSocket),
@@ -135,7 +117,7 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
                 {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}, hibernate};
             {error, NewRef} ->
                 ok = harakiri(),
-                {stop, {async_accept, inet:format_error(NewRef)}, State}
+                {stop, {async_accept,inet:format_error(NewRef)}, State}
         end
     catch
         exit:ExitReason ->
@@ -180,36 +162,3 @@ code_change(_OldVsn, State, _Extra) ->
 harakiri() ->
     _Pid = erlang:spawn(gen_rpc_server_sup, stop_child, [self()]),
     ok.
-
-acceptor_tcp_opts() ->
-    case gen_rpc_helper:otp_release() >= 18 of
-        true ->
-            [show_econnreset|?ACCEPTOR_TCP_OPTS];
-        false ->
-            ?ACCEPTOR_TCP_OPTS
-    end.
-
-%% Taken from prim_inet.  We are merely copying some socket options from the
-%% listening socket to the new acceptor socket.
-set_sockopt(ListSock, AccSocket) ->
-    true = inet_db:register_socket(AccSocket, inet_tcp),
-    case prim_inet:getopts(ListSock, acceptor_tcp_opts()) of
-        {ok, Opts} ->
-            case prim_inet:setopts(AccSocket, Opts) of
-                ok    -> ok;
-                Error -> gen_tcp:close(AccSocket), Error
-            end;
-        Error ->
-            (catch gen_tcp:close(AccSocket)),
-            Error
-        end.
-
-%% For loopback communication and performance testing
-get_remote_node_ip(Node) when Node =:= node() ->
-    {127,0,0,1};
-get_remote_node_ip(Node) ->
-    {ok, NodeInfo} = net_kernel:node_info(Node),
-    {address, AddressInfo} = lists:keyfind(address, 1, NodeInfo),
-    {net_address, {Ip, _Port}, _Name, _Proto, _Channel} = AddressInfo,
-    ok = lager:debug("node=\"~s\" ip_address=\"~p\"", [Node, Ip]),
-    Ip.

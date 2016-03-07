@@ -11,7 +11,7 @@
 
 %%% Public API
 -export([start_distribution/1,
-        start_slave/1,
+        start_slave/2,
         set_application_environment/0,
         set_application_environment/1,
         get_test_functions/1,
@@ -38,12 +38,12 @@ start_distribution(Node)->
             {error, Reason}
     end.
 
-start_slave(Slave) ->
+start_slave(Slave, Port) ->
     %% Starting a slave node with Distributed Erlang
     SlaveStr = atom_to_list(Slave),
-    [NameStr, IpStr] = string:tokens(SlaveStr, "@"),
+    [NameStr, IpStr] = string:tokens(SlaveStr, [$@]),
     Name = list_to_atom(NameStr),
-    {ok, _Slave} = slave:start(IpStr, Name, "+K true"),
+    {ok, _Slave} = slave:start(IpStr, Name, "+K true -gen_rpc tcp_server_port " ++ integer_to_list(Port)),
     ok = rpc:call(Slave, code, add_pathsz, [code:get_path()]),
     ok = set_application_environment(Slave),
     %% Start the application remotely
@@ -64,8 +64,8 @@ set_application_environment(Node) when is_atom(Node) ->
     ok.
 
 restart_application() ->
-    ok = application:stop(?APP),
-    ok = application:unload(?APP),
+    _ = application:stop(?APP),
+    _ = application:unload(?APP),
     ok = application:start(?APP),
     ok.
 

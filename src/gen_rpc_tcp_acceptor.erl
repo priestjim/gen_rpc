@@ -6,7 +6,7 @@
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
 
--module(gen_rpc_acceptor).
+-module(gen_rpc_tcp_acceptor).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -15,11 +15,14 @@
 %%% Include this library's name macro
 -include("app.hrl").
 
+%%% Receive timeout for lingering clients
+-define(RECEIVE_TIMEOUT, 5000).
+%%% Reply timeout
+-define(SEND_TIMEOUT, 5000).
+
 %%% Local state
 -record(state, {socket = undefined :: port() | undefined,
-        peer :: {inet:ip4_address(), inet:port_number()},
-        send_timeout :: non_neg_integer(),
-        inactivity_timeout :: non_neg_integer() | infinity}).
+        peer :: {inet:ip4_address(), inet:port_number()}}).
 
 %%% Server functions
 -export([start_link/1, set_socket/2, stop/1]).
@@ -31,15 +34,12 @@
 %% FSM States
 -export([waiting_for_socket/2, waiting_for_data/2]).
 
-%%% Process exports
--export([call_worker/7]).
-
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
 start_link(Peer) when is_tuple(Peer) ->
-    Name = gen_rpc_helper:make_process_name("acceptor", Peer),
-    gen_fsm:start_link({local,Name}, ?MODULE, {Peer}, [{spawn_opt, [{priority, high}]}]).
+    Name = gen_rpc_helper:make_process_name("tcp_acceptor", Peer),
+    gen_fsm:start_link({local,Name}, ?MODULE, {Peer}, []).
 
 stop(Pid) when is_pid(Pid) ->
      gen_fsm:sync_send_all_state_event(Pid, stop).
@@ -54,38 +54,50 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Peer}) ->
-    _OldVal = process_flag(trap_exit, true),
-    ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
-    {ok, SendTO} = application:get_env(?APP, send_timeout),
-    {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
-    %% Store the client's IP and the node in our state
-    {ok, waiting_for_socket, #state{peer=Peer,send_timeout=SendTO,inactivity_timeout=TTL}}.
+    ok = lager:debug("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
+    %% Store the client's IP in our state
+    {ok, waiting_for_socket, #state{peer=Peer}}.
 
 waiting_for_socket({socket_ready, Socket}, #state{peer=Peer} = State) ->
     % Now we own the socket
-    ok = lager:debug("event=acquiring_socket_ownership socket=\"~p\" peer=\"~p\"",
-                     [Socket, gen_rpc_helper:peer_to_string(Peer)]),
-    ok = inet:setopts(Socket, [{send_timeout,
-                      State#state.send_timeout}|gen_rpc_helper:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
+    ok = lager:debug("event=acquiring_socket_ownership socket=\"~p\" peer=\"~s\"", [Socket, gen_rpc_helper:peer_to_string(Peer)]),
+    ok = inet:setopts(Socket, [{send_timeout, ?SEND_TIMEOUT}|gen_rpc_helper:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
     {next_state, waiting_for_data, State#state{socket=Socket}}.
 
 %% Notification event coming from client
-waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,inactivity_timeout=TTL} = State) ->
-    %% The meat of the whole project: process a function call and return
-    %% the data
+waiting_for_data({data, Data}, #state{socket=Socket, peer=Peer} = State) ->
+    Cookie = erlang:get_cookie(),
     try erlang:binary_to_term(Data) of
-        {ClientPid, Ref, {CallType, M, F, A}} when CallType =:= call; CallType =:= async_call ->
-            WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), CallType, ClientPid, Ref, M, F, A]),
-            ok = lager:debug("event=call_received socket=\"~p\" peer=\"~s\" call_reference=\"~p\" client_pid=\"~p\" worker_pid=\"~p\"",
-                             [Socket, gen_rpc_helper:peer_to_string(Peer), Ref, ClientPid, WorkerPid]),
-            ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, waiting_for_data, State, TTL};
-        {cast, M, F, A} ->
-            ok = lager:debug("event=cast_received socket=\"~p\" peer=\"~s\" module=~s function=~s args=\"~p\"",
-                             [Socket, Peer, M, F, A]),
-            _Pid = erlang:spawn(M, F, A),
-            ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, waiting_for_data, State, TTL};
+        {start_gen_rpc_server, ClientCookie} when ClientCookie =:= Cookie ->
+            {ok, Pid} = gen_rpc_server_sup:start_child(Peer),
+            {ok, Port} = gen_rpc_server:get_port(Pid),
+            Packet = erlang:term_to_binary({gen_rpc_server_started, Port}),
+            Result = case gen_tcp:send(Socket, Packet) of
+                {error, Reason} ->
+                    ok = lager:error("event=transmission_failed socket=\"~p\" peer=\"~s\" reason=\"~p\"",
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer), Reason]),
+                    {stop, {badtcp,Reason}, {badtcp,Reason}, State};
+                ok ->
+                    ok = lager:debug("event=transmission_succeeded socket=\"~p\" peer=\"~s\"",
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer)]),
+                    {stop, normal, State}
+            end,
+            ok = harakiri(),
+            Result;
+        {start_gen_rpc_server, _CorrrectClientCookie} ->
+            ok = lager:error("event=invalid_cookie_received socket=\"~p\" peer=\"~s\"",
+                             [Socket, gen_rpc_helper:peer_to_string(Peer)]),
+            Packet = erlang:term_to_binary({connection_rejected, invalid_cookie}),
+            ok = case gen_tcp:send(Socket, Packet) of
+                {error, Reason} ->
+                    ok = lager:error("event=transmission_failed socket=\"~p\" peer=\"~s\" reason=\"~p\"",
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer), Reason]);
+                ok ->
+                    ok = lager:debug("event=transmission_succeeded socket=\"~p\" peer=\"~s\"",
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer)])
+            end,
+            ok = harakiri(),
+            {stop, {badrpc,invalid_cookie}, {badrpc,invalid_cookie}, State};
         OtherData ->
             ok = lager:debug("event=erroneous_data_received socket=\"~p\" peer=\"~s\" data=\"~p\"",
                              [Socket, gen_rpc_helper:peer_to_string(Peer), OtherData]),
@@ -96,9 +108,10 @@ waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,inactivity_timeout
             ok = harakiri(),
             {stop, {badtcp, corrupt_data}, State}
     end;
+
 %% Handle the inactivity timeout gracefully
 waiting_for_data(timeout, State) ->
-    ok = lager:info("message=timeout event=server_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
+    ok = lager:info("message=timeout event=receive_timeout socket=\"~p\" action=stopping", [State#state.socket]),
     ok = harakiri(),
     {stop, normal, State}.
 
@@ -122,23 +135,8 @@ handle_sync_event(Event, _From, StateName, State) ->
 handle_info({tcp, Socket, Data}, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined ->
     waiting_for_data({data, Data}, State);
 
-%% Handle a call worker message
-handle_info({CallReply, _} = Payload, waiting_for_data, #state{socket=Socket} = State)
-when Socket =/= undefined, CallReply =:= call_reply orelse CallReply =:= async_call_reply ->
-    Packet = erlang:term_to_binary(Payload),
-    ok = lager:debug("message=call_reply event=call_reply_received socket=\"~p\"", [Socket]),
-    case gen_tcp:send(Socket, Packet) of
-        ok ->
-            ok = lager:debug("message=call_reply event=call_reply_sent socket=\"~p\"", [Socket]),
-            {next_state, waiting_for_data, State, State#state.inactivity_timeout};
-        {error, Reason} ->
-            ok = lager:error("message=call_reply event=failed_to_send_call_reply socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
-            ok = harakiri(),
-            {stop, {badtcp, Reason}, State}
-    end;
-
-handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket,peer=Peer} = State) ->
-    ok = lager:notice("message=tcp_closed event=tcp_socket_closed socket=\"~p\" peer=\"~s\" action=stopping",
+handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket, peer=Peer} = State) ->
+    ok = lager:info("message=tcp_closed event=tcp_socket_closed socket=\"~p\" peer=\"~s\" action=stopping",
                       [Socket, gen_rpc_helper:peer_to_string(Peer)]),
     ok = harakiri(),
     {stop, normal, State};
@@ -162,7 +160,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 terminate(_Reason, _StateName, #state{socket=undefined}) ->
     ok = harakiri(),
     ok;
-
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
@@ -172,29 +169,7 @@ terminate(_Reason, _StateName, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+%% Cleanly terminate self through the supervisor
 harakiri() ->
-    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
+    _Pid = erlang:spawn(gen_rpc_tcp_acceptor_sup, stop_child, [self()]),
     ok.
-
-%% Process an RPC call request outside of the FSM
-call_worker(Parent, CallType, WorkerPid, Ref, M, F, A) ->
-    ok = lager:debug("event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),
-    % If called MFA return exception, not of type term().
-    % This fails term_to_binary coversion, crashes process
-    % and manifest as timeout. Wrap inside anonymous function with catch
-    % will crash the worker quickly not manifest as a timeout.
-    % See call_MFA_undef test.
-    Ret = try erlang:apply(M, F, A)
-          catch
-               throw:Term -> Term;
-               exit:Reason -> {badrpc, {'EXIT', Reason}};
-               error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
-          end,
-    Parent ! call_worker_result(WorkerPid, CallType, Ref, Ret),
-    ok.
-
-call_worker_result(WorkerPid, call, Ref, Ret) ->
-    {call_reply, {WorkerPid, Ref, Ret}};
-
-call_worker_result(WorkerPid, async_call, Ref, Ret) ->
-    {async_call_reply, {WorkerPid, Ref, Ret}}.

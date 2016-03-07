@@ -4,7 +4,7 @@
 %%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 
--module(gen_rpc_server_sup).
+-module(gen_rpc_tcp_acceptor_sup).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -23,10 +23,9 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-%% Launch a local receiver and return the port
--spec start_child({inet:ip4_address(), inet:port_number()}) -> {ok, any()} | {error, any()}.
+-spec start_child({inet:ip4_address(), inet:port_number()}) -> {ok, supervisor:startchild_ret()} | {error, any()}.
 start_child(Peer) when is_tuple(Peer) ->
-    ok = lager:debug("event=starting_new_server peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
+    ok = lager:debug("event=starting_new_tcp_acceptor client_ip=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     case supervisor:start_child(?MODULE, [Peer]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
@@ -34,15 +33,13 @@ start_child(Peer) when is_tuple(Peer) ->
             supervisor:start_child(?MODULE, [Peer]);
         {error, OtherError} ->
             {error, OtherError};
-        {ok, TPid} ->
-            {ok, TPid}
+        {ok, Pid} ->
+            {ok, Pid}
     end.
 
-%% Terminate and unregister a child server
--spec stop_child(Pid::pid()) -> 'ok'.
+-spec stop_child(Pid::pid()) ->  'ok'.
 stop_child(Pid) when is_pid(Pid) ->
-    ok = lager:debug("event=stopping_server server_pid=\"~p\"", [Pid]),
-    %% Terminate the acceptor child first and then
+    ok = lager:debug("event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
     _ = supervisor:delete_child(?MODULE, Pid),
     ok.
@@ -52,5 +49,5 @@ stop_child(Pid) when is_pid(Pid) ->
 %%% ===================================================
 init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
-        {gen_rpc_server, {gen_rpc_server,start_link,[]}, temporary, 5000, worker, [gen_rpc_server]}
+        {gen_rpc_tcp_acceptor, {gen_rpc_tcp_acceptor,start_link,[]}, temporary, 5000, worker, [gen_rpc_tcp_acceptor]}
     ]}}.
