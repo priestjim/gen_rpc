@@ -8,7 +8,35 @@
 - Issues: [![GitHub issues](https://img.shields.io/github/issues/priestjim/gen_rpc.svg)](https://github.com/priestjim/gen_rpc/issues)
 - License: [![GitHub license](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://raw.githubusercontent.com/priestjim/gen_rpc/master/LICENSE)
 
-## Getting Started
+## Rationale
+
+The reasons for developing `gen_rpc` became apparent after a lot of trial and error while trying to scale a distributed Erlang infrastructure using the `rpc` library initially and subsequently `erlang:spawn/4` (remote spawn). Both these solutions suffer from very specific issues under a sufficiently high number of requests.
+
+The `rpc` library operates by shipping data over the wire via Distributed Erlang's ports into a registered `gen_server` on the other side called `rex` (Remote EXecution server), which is running as part of the standard distribution. In high traffic scenarios, this allows the inherent problem of running a single `gen_server` server to manifest: mailbox flooding. As the number of nodes participating in a data exchange with the node in question increases, so do the messages that `rex` has to deal with, eventually becoming too much for the process to handle (don't forget this is confined to a single thread).
+
+Enter `erlang:spawn/4` (_remote spawn_ from now on). Remote spawn dynamically spawns processes on a remote node, skipping the single-mailbox restriction that `rex` has. The are various libraries written to leverage that loophole (such as [Rexi](https://github.com/cloudant/rexi)), however there's a catch.
+
+Remote spawn was not designed to ship large amounts of data as part of the call's arguments. Hence, if you want to ship a large binary such as a picture or a transaction log (large can also be small if your network is slow) over remote spawn, sooner or later you'll see this message popping up in your logs if you have subscribed to the system monitor through `erlang:system_monitor/2`:
+
+    {monitor,<4685.187.0>,busy_dist_port,#Port<4685.41652>}
+
+This message essentially means that the VM's distributed port pair was busy while the VM was trying to use it for some other task like _Distributed Erlang heartbeat beacons_ or _mnesia synchronization_. This of course wrecks havoc in certain timing expectations these subsystems have and the results can be very problematic: the VM might detect a node as disconnected even though everything is perfectly healthy and `mnesia` might misdetect a network partition.
+
+`gen_rpc` solves both these problems by sharding data coming from different nodes to different processes (hence different mailboxes) and by using different `gen_tcp` ports for different nodes (hence not utilizing the Distributed Erlang ports).
+
+# Build Dependencies
+
+To build this project you need to have the following:
+
+* **Erlang/OTP** >= 17.0
+
+* **git** >= 1.7
+
+* **GNU make** >= 3.80
+
+* **rebar3** >= 3.0-beta4
+
+## Usage
 
 Getting started with `gen_rpc` is easy. First, add the appropriate dependency line to your `rebar.config`:
 
@@ -27,25 +55,29 @@ Finally, start a couple of nodes to test it out:
     (my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
     'other_node@1.2.3.4'
 
-## Rationale
+## Build Targets
 
-The reasons for developing `gen_rpc` became apparent after a lot of trial and error while trying to scale a distributed Erlang infrastructure using the `rpc` library initially and subsequently `erlang:spawn/4` (remote spawn). Both these solutions suffer from very specific issues under a sufficiently high number of requests.
+`gen_rpc` bundles a `Makefile` that makes development straightforward.
 
-The `rpc` library operates by shipping data over the wire via Distributed Erlang's ports into a registered `gen_server` on the other side called `rex` (Remote EXecution server), which is running as part of the standard distribution. In high traffic scenarios, this allows the inherent problem of running a single `gen_server` server to manifest: mailbox flooding. As the number of nodes participating in a data exchange with the node in question increases, so do the messages that `rex` has to deal with, eventually becoming too much for the process to handle (don't forget this is confined to a single thread).
+To build `gen_rpc` simply run:
 
-Enter `erlang:spawn/4` (_remote spawn_ from now on). Remote spawn dynamically spawns processes on a remote node, skipping the single-mailbox restriction that `rex` has. The are various libraries written to leverage that loophole (such as [Rexi](https://github.com/cloudant/rexi)), however there's a catch.
+    make
 
-Remote spawn was not designed to ship large amounts of data as part of the call's arguments. Hence, if you want to ship a large binary such as a picture or a transaction log (large can also be small if your network is slow) over remote spawn, sooner or later you'll see this message popping up in your logs if you have subscribed to the system monitor through `erlang:system_monitor/2`:
+To run the full test suite, run:
 
-    {monitor,<4685.187.0>,busy_dist_port,#Port<4685.41652>}
+    make test
 
-This message essentially means that the VM's distributed port pair was busy while the VM was trying to use it for some other task like _Distributed Erlang heartbeat beacons_ or _mnesia synchronization_. This of course wrecks havoc in certain timing expectations these subsystems have and the results can be very problematic: the VM might detect a node as disconnected even though everything is perfectly healthy and `mnesia` might misdetect a network partition.
+To run the full test suite, the XRef tool and Dialyzer, run:
 
-`gen_rpc` solves both these problems by sharding data coming from different nodes to different processes (hence different mailboxes) and by using different `gen_tcp` ports for different nodes (hence not utilizing the Distributed Erlang ports).
+    make dist
 
-## Architecture
+To build the project and drop in a console while developing, run:
 
-TBD.
+    make shell
+
+To clean every build artifact and log, run:
+
+    make distclean
 
 ## API
 
@@ -78,6 +110,10 @@ For more information on what the functions below do, run `erl -man rpc`.
 - `server_inactivity_timeout`: Inactivity period in **milliseconds** after which a server port will be closed (and hence have the TCP file descriptor freed).
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
+
+## Architecture
+
+TBD.
 
 ## Performance
 
