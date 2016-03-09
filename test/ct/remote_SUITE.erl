@@ -181,16 +181,38 @@ async_call_nb_yield_infinity(_Config) ->
 client_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be undefined. Rewrite/Remove test?
-    undefined =:= whereis(?SLAVE).
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    undefined = whereis(ClientName),
+    [] = supervisor:which_children(gen_rpc_client_sup).
 
 server_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be there
-    [] = supervisor:which_children(gen_rpc_acceptor_sup),
-    %% The server supervisor should have no children
-    [] = supervisor:which_children(gen_rpc_server_sup).
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    undefined = whereis(ClientName),
+    [] = supervisor:which_children(gen_rpc_client_sup).
+
+random_local_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    {_, Socket, _, _, _} = sys:get_state(ClientName),
+    ok = gen_tcp:close(Socket),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
+
+random_remote_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    [{_,ServerPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]),
+    {_,Socket,_,_,_} = rpc:call(?SLAVE, sys, get_state, [ServerPid]),
+    ok = rpc:call(?SLAVE, gen_tcp, close, [Socket]),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases

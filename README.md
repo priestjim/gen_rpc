@@ -93,7 +93,7 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `cast(Node, Module, Function, Args)`: A non-blocking fire-and-forget call.
 
-- `async_call(Node, Module, Function, Args)`, `yield(Key)`, `nb_yield(Key)` and `nb_yield(Key, Timeout)`: Promise-based function pairs.
+- `async_call(Node, Module, Function, Args)`, `yield(Key)`, `nb_yield(Key)` and `nb_yield(Key, Timeout)`: Promise-based calls. Make a call with `async_call` and retrieve the result asynchronously, when you need it with `yield` or `nb_yield`.
 
 - `multicall(Module, Function, Args)`, `multicall(Nodes, Module, Function, Args)`, `multicall(Module, Function, Args, Timeout)` and `multicall(Nodes, Module, Function, Args, Timeout)`: Multi-node version of the `call` function.
 

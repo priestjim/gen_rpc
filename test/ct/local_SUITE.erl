@@ -248,6 +248,17 @@ server_inactivity_timeout(_Config) ->
     %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).
 
+random_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
+    ClientName = gen_rpc_helper:make_process_name("client", ?NODE),
+    {_,Socket,_,_,_} = sys:get_state(ClientName),
+    ok = gen_tcp:close(Socket),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_server_sup),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = supervisor:which_children(gen_rpc_acceptor_sup).
+
 %%% ===================================================
 %%% Auxiliary functions for test cases
 %%% ===================================================

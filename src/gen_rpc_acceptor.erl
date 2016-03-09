@@ -92,33 +92,27 @@ waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,inactivity_timeout
         OtherData ->
             ok = lager:debug("event=erroneous_data_received socket=\"~p\" peer=\"~s\" data=\"~p\"",
                              [Socket, gen_rpc_helper:peer_to_string(Peer), OtherData]),
-            ok = harakiri(),
             {stop, {badrpc, erroneous_data}, State}
     catch
         error:badarg ->
-            ok = harakiri(),
             {stop, {badtcp, corrupt_data}, State}
     end;
 %% Handle the inactivity timeout gracefully
 waiting_for_data(timeout, State) ->
     ok = lager:info("message=timeout event=server_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, State}.
 
 handle_event(Event, StateName, State) ->
     ok = lager:critical("socket=\"~p\" event=uknown_event payload=\"~p\" action=stopping", [State#state.socket, Event]),
-    ok = harakiri(),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Gracefully terminate
 handle_sync_event(stop, _From, _StateName, State) ->
     ok = lager:debug("message=stop event=stopping_acceptor socket=\"~p\"", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, ok, State};
 
 handle_sync_event(Event, _From, StateName, State) ->
     ok = lager:critical("event=uknown_event socket=\"~p\" payload=\"~p\" action=stopping", [State#state.socket, Event]),
-    ok = harakiri(),
     {stop, {StateName, undefined_event, Event}, State}.
 
 %% Incoming data handlers
@@ -136,26 +130,22 @@ when Socket =/= undefined, CallReply =:= call_reply orelse CallReply =:= async_c
             {next_state, waiting_for_data, State, State#state.inactivity_timeout};
         {error, Reason} ->
             ok = lager:error("message=call_reply event=failed_to_send_call_reply socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
-            ok = harakiri(),
             {stop, {badtcp, Reason}, State}
     end;
 
 handle_info({tcp_closed, Socket}, _StateName, #state{socket=Socket,peer=Peer} = State) ->
     ok = lager:notice("message=tcp_closed event=tcp_socket_closed socket=\"~p\" peer=\"~s\" action=stopping",
                       [Socket, gen_rpc_helper:peer_to_string(Peer)]),
-    ok = harakiri(),
     {stop, normal, State};
 
 handle_info({tcp_error, Socket, Reason}, _StateName, #state{socket=Socket,peer=Peer} = State) ->
     ok = lager:notice("message=tcp_error event=tcp_socket_error socket=\"~p\" peer=\"~s\" reason=\"~p\" action=stopping",
                       [Socket, gen_rpc_helper:peer_to_string(Peer), Reason]),
-    ok = harakiri(),
     {stop, normal, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, StateName, State) ->
     ok = lager:critical("socket=\"~p\" event=uknown_event action=stopping", [State#state.socket]),
-    ok = harakiri(),
     {stop, {StateName, unknown_message, Msg}, State}.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -163,22 +153,16 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 %% Terminate normally if we haven't received the socket yet
 terminate(_Reason, _StateName, #state{socket=undefined}) ->
-    ok = harakiri(),
     ok;
 
 %% Terminate by closing the socket
 terminate(_Reason, _StateName, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    ok = harakiri(),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-harakiri() ->
-    _Pid = erlang:spawn(gen_rpc_acceptor_sup, stop_child, [self()]),
-    ok.
-
 %% Process an RPC call request outside of the FSM
 call_worker(Parent, CallType, WorkerPid, Ref, M, F, A) ->
     ok = lager:debug("event=call_received call_reference=\"~p\" module=~s function=~s args=\"~p\"", [Ref, M, F, A]),

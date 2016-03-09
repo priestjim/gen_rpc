@@ -76,19 +76,16 @@ handle_call(get_port, _From, #state{socket=Socket} = State) ->
 %% Gracefully stop
 handle_call(stop, _From, State) ->
     ok = lager:debug("message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _From, State) ->
     ok = lager:critical("event=unknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->
     ok = lager:critical("event=unknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_cast, Msg}, State}.
 
 handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
@@ -117,14 +114,12 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
             {ok, NewRef} ->
                 {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}, hibernate};
             {error, NewRef} ->
-                ok = harakiri(),
                 {stop, {async_accept,inet:format_error(NewRef)}, State}
         end
     catch
         exit:ExitReason ->
             ok = lager:error("message=inet_async event=unknown_error socket=\"~p\" error=\"~p\" action=stopping",
                             [ListSock, ExitReason]),
-            ok = harakiri(),
             {stop, ExitReason, State}
     end;
 
@@ -132,34 +127,23 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
 handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=Ref} = State) ->
     ok = lager:error("message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
                     [ListSock, Error]),
-    ok = harakiri(),
     {stop, Error, State};
 
 %% Handle exit messages from our acceptor gracefully
 handle_info({'EXIT', AccPid, Reason}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
     ok = lager:notice("message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
                     [Socket, AccPid, Reason]),
-    ok = harakiri(),
     {stop, Reason, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
     ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_message, Msg}, State}.
 
 %% Terminate cleanly by closing the listening socket
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    ok = harakiri(),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%%% ===================================================
-%%% Private functions
-%%% ===================================================
-harakiri() ->
-    _Pid = erlang:spawn(gen_rpc_server_sup, stop_child, [self()]),
-    ok.

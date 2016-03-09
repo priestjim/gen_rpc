@@ -257,13 +257,11 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
             ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
                              [Socket, Ref]),
             %% Reply will be handled from the worker
-            ok = harakiri(),
             {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
         {error, Reason} ->
             ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"~p\"",
                              [Socket, Ref, Reason]),
             %% Reply will be handled from the worker
-            ok = harakiri(),
             {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
             ok = lager:debug("message=call event=transmission_succeeded socket=\"~p\" call_ref=\"~p\"",
@@ -277,13 +275,11 @@ handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{so
 %% Gracefully terminate
 handle_call(stop, _Caller, State) ->
     ok = lager:debug("event=stopping_client socket=\"~p\"", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, State) ->
     ok = lager:critical("event=uknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% This is the actual CAST handler for CAST
@@ -298,11 +294,9 @@ handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = St
         {error, timeout} ->
             %% Terminate will handle closing the socket
             ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
-            ok = harakiri(),
             {stop, {badtcp,send_timeout}, State};
         {error, Reason} ->
             ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
-            ok = harakiri(),
             {stop, {badtcp,Reason}, State};
         ok ->
             ok = lager:debug("message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
@@ -320,13 +314,11 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
             ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
                              [Socket, Caller, Ref]),
             %% Reply will be handled from the worker
-            ok = harakiri(),
             {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
         {error, Reason} ->
             ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
                              [Socket, Caller, Ref, Reason]),
             %% Reply will be handled from the worker
-            ok = harakiri(),
             {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
             ok = lager:debug("message=async_call event=transmission_succeeded socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\"",
@@ -340,7 +332,6 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->
     ok = lager:critical("event=uknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_cast, Msg}, State}.
 
 %% Handle any TCP packet coming in
@@ -368,24 +359,20 @@ handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
 
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
-    ok = harakiri(),
     {stop, normal, State};
 
 handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
-    ok = harakiri(),
     {stop, normal, State};
 
 %% Handle the inactivity timeout gracefully
 handle_info(timeout, State) ->
     ok = lager:info("message=timeout event=client_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
     ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_info, Msg}, State}.
 
 %% Stub functions
@@ -394,16 +381,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    ok = harakiri(),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-harakiri() ->
-    _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
-    ok.
-
 connect_to_node(Node, Port) ->
     Host = gen_rpc_helper:host_from_node(Node),
     case gen_tcp:connect(Host, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ?TCP_SERVER_CONN_TIMEOUT) of

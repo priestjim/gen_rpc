@@ -48,10 +48,15 @@ stop_child(Pid) when is_pid(Pid) ->
 children_names() ->
     NodePid = gen_rpc_helper:make_process_name("client", node()),
     lists:foldl(fun({_,Pid,_,_}, Acc) ->
-        {_, Name} = erlang:process_info(Pid, registered_name),
-        case Name of
-            Name when Name =:= NodePid -> Acc; %% Skip the local node
-            _Else -> [gen_rpc_helper:extract_node_name(Name)|Acc]
+        case erlang:process_info(Pid, registered_name) of
+            undefined ->
+                %% Process was killed while traversing the children, skip
+                Acc;
+            {_, Name} ->
+                case Name of
+                    Name when Name =:= NodePid -> Acc; %% Skip the local node
+                    _Else -> [gen_rpc_helper:extract_node_name(Name)|Acc]
+                end
         end
     end, [], supervisor:which_children(?MODULE)).
 
