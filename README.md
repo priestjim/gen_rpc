@@ -115,7 +115,7 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 In order to achieve the mailbox-per-node feature, `gen_rpc` uses a very specific architecture:
 
-- Whenever a client neesd to send data to a remote node, it will perform a `whereis` to a process named after the remote node. This is deliberate as it allows fast process lookups without atom-to-term conversions
+- Whenever a client needs to send data to a remote node, it will perform a `whereis` to a process named after the remote node. This is deliberate as it allows fast process lookups without atom-to-term conversions
 
 - If the specified `client` process does not exist, it will request for a new one through the `dispatcher` process, which in turn will launch it through the appropriate supervisor. Since this `whereis`-request from dispatcher sequence can happen concurrently by many different processes, serializing it behind a `gen_server` allows us to avoid race conditions.
 
