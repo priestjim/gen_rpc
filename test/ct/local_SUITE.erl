@@ -49,7 +49,11 @@ init_per_testcase(async_call_inexistent_node, Config) ->
     Config;
 
 init_per_testcase(remote_node_call, Config) ->
-    ok = gen_rpc_test_helper:start_slave(?SLAVE),
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    %% In order to connect to the slave
+    ok = application:set_env(?APP, tcp_server_port, 5370),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
@@ -65,6 +69,8 @@ end_per_testcase(server_inactivity_timeout, Config) ->
 
 end_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
@@ -77,7 +83,10 @@ end_per_testcase(_OtherTest, Config) ->
 supervisor_black_box(_Config) ->
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
+    true = erlang:is_process_alive(whereis(gen_rpc_tcp_acceptor_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_client_sup)),
+    true = erlang:is_process_alive(whereis(gen_rpc_tcp_server)),
+    true = erlang:is_process_alive(whereis(gen_rpc_dispatcher)),
     ok.
 
 %% Test main functions
@@ -136,24 +145,6 @@ cast_mfa_throw(_Config) ->
 
 cast_inexistent_node(_Config) ->
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
-
-safe_cast(_Config) ->
-    true = gen_rpc:safe_cast(?NODE, erlang, timestamp).
-
-safe_cast_anonymous_function(_Config) ->
-    true = gen_rpc:safe_cast(?NODE, erlang, apply, [fun() -> os:timestamp() end, []]).
-
-safe_cast_mfa_undef(_Config) ->
-    true = gen_rpc:safe_cast(?NODE, os, timestamp_undef, []).
-
-safe_cast_mfa_exit(_Config) ->
-    true = gen_rpc:safe_cast(?NODE, erlang, apply, [fun() -> exit(die) end, []]).
-
-safe_cast_mfa_throw(_Config) ->
-    true = gen_rpc:safe_cast(?NODE, erlang, throw, ['throwme']).
-
-safe_cast_inexistent_node(_Config) ->
-    {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?NODE, os, timestamp, []),
@@ -257,14 +248,16 @@ server_inactivity_timeout(_Config) ->
     %% The server supervisor should have no children
     [] = supervisor:which_children(gen_rpc_server_sup).
 
-remote_node_call(_Config) ->
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
-
-compat_call(_Config) ->
-    {ok, _Port} = 'Elixir.ExRPC.Supervisor.Server':start_child(?NODE),
-    ServerProc = gen_rpc_helper:make_process_name(server, ?NODE),
-    ServerPid = whereis(ServerProc),
-    ok = gen_rpc_server_sup:stop_child(ServerPid).
+random_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
+    ClientName = gen_rpc_helper:make_process_name("client", ?NODE),
+    {_,Socket} = sys:get_state(ClientName),
+    ok = gen_tcp:close(Socket),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_server_sup),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = supervisor:which_children(gen_rpc_acceptor_sup).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases

@@ -24,21 +24,19 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% Launch a local receiver and return the port
--spec start_child(Node::node()) -> {ok, inet:port_number()} | {ok, _}.
-start_child(Node) when is_atom(Node) ->
-    ok = lager:debug("event=starting_new_server client_node=\"~s\"", [Node]),
-    {ok, Pid} = case supervisor:start_child(?MODULE, [Node]) of
+-spec start_child({inet:ip4_address(), inet:port_number()}) -> {ok, any()} | {error, any()}.
+start_child(Peer) when is_tuple(Peer) ->
+    ok = lager:debug("event=starting_new_server peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
+    case supervisor:start_child(?MODULE, [Peer]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
             ok = stop_child(CPid),
-            supervisor:start_child(?MODULE, [Node]);
+            supervisor:start_child(?MODULE, [Peer]);
         {error, OtherError} ->
             {error, OtherError};
         {ok, TPid} ->
             {ok, TPid}
-    end,
-    {ok, Port} = gen_rpc_server:get_port(Pid),
-    {ok, Port}.
+    end.
 
 %% Terminate and unregister a child server
 -spec stop_child(Pid::pid()) -> ok.

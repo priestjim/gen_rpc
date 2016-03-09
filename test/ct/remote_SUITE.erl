@@ -32,39 +32,43 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:start_slave(?SLAVE),
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
-    ok = application:set_env(?APP, client_inactivity_timeout, infinity),
+    %% In order to connect to the slave
+    ok = application:set_env(?APP, tcp_server_port, 5370),
+    ok = application:set_env(?APP, client_inactivity_timeout, 500),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config;
 
 init_per_testcase(server_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:start_slave(?SLAVE),
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
-    ok = application:set_env(?APP, server_inactivity_timeout, infinity),
+    %% In order to connect to the slave
+    ok = application:set_env(?APP, tcp_server_port, 5370),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
-    ok = gen_rpc_test_helper:start_slave(?SLAVE),
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    %% In order to connect to the slave
+    ok = application:set_env(?APP, tcp_server_port, 5370),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    Config;
-
-end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
     Config.
-
 
 %%% ===================================================
 %%% Test cases
@@ -74,19 +78,16 @@ call(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
 
 call_mfa_undef(_Config) ->
-    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?SLAVE, os, timestamp_undef),
-    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
+    {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:call(?SLAVE, os, timestamp_undef).
 
 call_mfa_exit(_Config) ->
-    {badrpc, {'EXIT', die}} = gen_rpc:call(?SLAVE, erlang, exit, ['die']),
-    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
+    {badrpc, {'EXIT', die}} = gen_rpc:call(?SLAVE, erlang, exit, ['die']).
 
 call_mfa_throw(_Config) ->
-    'throwXdown' = gen_rpc:call(?SLAVE, erlang, throw, ['throwXdown']),
-    ok = ct:pal("Result [call_mfa_undef]: signal=EXIT Reason={die}").
+    'throwXdown' = gen_rpc:call(?SLAVE, erlang, throw, ['throwXdown']).
 
 call_with_receive_timeout(_Config) ->
-    {badrpc, timeout} = gen_rpc:call(?SLAVE, timer, sleep, [500], 1),
+    {badrpc, timeout} = gen_rpc:call(?SLAVE, timer, sleep, [500], 100),
     ok = timer:sleep(500).
 
 interleaved_call(_Config) ->
@@ -95,10 +96,9 @@ interleaved_call(_Config) ->
     %% for their result (effectively rendering the results out of order)
     %% in order to test proper data interleaving
     Pid1 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 1, infinity]),
-    Pid2 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 2, 10]),
+    Pid2 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 2, 100]),
     Pid3 = erlang:spawn(?MODULE, interleaved_call_proc, [self(), 3, infinity]),
-    ok = interleaved_call_loop(Pid1, Pid2, Pid3, 0),
-    ok.
+    ok = interleaved_call_loop(Pid1, Pid2, Pid3, 0).
 
 cast(_Config) ->
     true = gen_rpc:cast(?SLAVE, erlang, timestamp).
@@ -117,24 +117,6 @@ cast_mfa_throw(_Config) ->
 
 cast_inexistent_node(_Config) ->
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
-
-safe_cast(_Config) ->
-    true = gen_rpc:safe_cast(?SLAVE, erlang, timestamp).
-
-safe_cast_anonymous_function(_Config) ->
-    true = gen_rpc:safe_cast(?SLAVE, erlang, apply, [fun() -> os:timestamp() end, []]).
-
-safe_cast_mfa_undef(_Config) ->
-    true = gen_rpc:safe_cast(?SLAVE, os, timestamp_undef, []).
-
-safe_cast_mfa_exit(_Config) ->
-    true = gen_rpc:safe_cast(?SLAVE, erlang, apply, [fun() -> exit(die) end, []]).
-
-safe_cast_mfa_throw(_Config) ->
-    true = gen_rpc:safe_cast(?SLAVE, erlang, throw, ['throwme']).
-
-safe_cast_inexistent_node(_Config) ->
-    {badrpc, nodedown} = gen_rpc:safe_cast(?FAKE_NODE, os, timestamp, [], 1000).
 
 async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
@@ -206,16 +188,38 @@ async_call_nb_yield_infinity(_Config) ->
 client_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be undefined. Rewrite/Remove test?
-    undefined =:= whereis(?SLAVE).
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    undefined = whereis(ClientName),
+    [] = supervisor:which_children(gen_rpc_client_sup).
 
 server_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be there
-    [] = supervisor:which_children(gen_rpc_acceptor_sup),
-    %% The server supervisor should have no children
-    [] = supervisor:which_children(gen_rpc_server_sup).
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    undefined = whereis(ClientName),
+    [] = supervisor:which_children(gen_rpc_client_sup).
+
+random_local_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
+    {_, Socket} = sys:get_state(ClientName),
+    ok = gen_tcp:close(Socket),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
+
+random_remote_tcp_close(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
+    [{_,ServerPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]),
+    {_, Socket, _, _, _} = rpc:call(?SLAVE, sys, get_state, [ServerPid]),
+    ok = rpc:call(?SLAVE, gen_tcp, close, [Socket]),
+    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [] = gen_rpc:nodes(),
+    [] = supervisor:which_children(gen_rpc_client_sup),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
@@ -224,16 +228,16 @@ server_inactivity_timeout(_Config) ->
 interleaved_call_loop(Pid1, Pid2, Pid3, Num) when Num < 3 ->
     receive
         {reply, Pid1, 1, 1} ->
-            ct:pal("Received proper reply from Worker 1"),
+            ok = ct:pal("Received proper reply from Worker 1"),
             interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
         {reply, Pid2, 2, {badrpc, timeout}} ->
-            ct:pal("Received proper reply from Worker 2"),
+            ok = ct:pal("Received proper reply from Worker 2"),
             interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
         {reply, Pid3, 3, 3} ->
-            ct:pal("Received proper reply from Worker 3"),
+            ok = ct:pal("Received proper reply from Worker 3"),
             interleaved_call_loop(Pid1, Pid2, Pid3, Num+1);
-        _Else ->
-            ct:pal("Received out of order reply"),
+        Else ->
+            ok = ct:pal("Received out of order reply: ~p", [Else]),
             fail
     end;
 interleaved_call_loop(_, _, _, 3) ->

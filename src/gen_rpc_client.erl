@@ -17,23 +17,23 @@
 %%% Include helpful guard macros
 -include("guards.hrl").
 
+%%% Connection and reply timeouts from the TCP server
+-define(TCP_SERVER_CONN_TIMEOUT, 5000).
+-define(TCP_SERVER_SEND_TIMEOUT, 5000).
+-define(TCP_SERVER_RECV_TIMEOUT, 5000).
+
 %%% Local state
--record(state, {socket :: port(),
-        server_node :: atom(),
-        send_timeout :: timeout(),
-        receive_timeout :: timeout(),
-        inactivity_timeout :: timeout()}).
+-record(state, {socket :: port()}).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
 
 %%% FSM functions
--export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
+-export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5]).
 
 -export([async_call/3, async_call/4, yield/1, nb_yield/1, nb_yield/2]).
 
--export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5,
-         safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
+-export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5]).
 
 -export([multicall/3, multicall/4, multicall/5]).
 
@@ -42,16 +42,15 @@
         handle_info/2, terminate/2, code_change/3]).
 
 %%% Process exports
--export([call_worker/4, async_call_worker/5]).
+-export([async_call_worker/5]).
 
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
 -spec start_link(node()) -> gen_server:startlink_ret().
 start_link(Node) when is_atom(Node) ->
-    %% Naming our gen_server as the node we're calling as it is extremely efficent:
-    %% We'll never deplete atoms because all connected node names are already atoms in this VM
-    gen_server:start_link({local,Node}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    gen_server:start_link({local,PidName}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
 
 -spec stop(node()) -> ok.
 stop(Node) when is_atom(Node) ->
@@ -82,7 +81,9 @@ call(Node, M, F, A, RecvTO) ->
 call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse ?is_timeout(RecvTO),
                                          SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    case whereis(Node) of
+    %% Create a unique name for the client because we register as such
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    case whereis(PidName) of
         undefined ->
             ok = lager:info("event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
             case gen_rpc_dispatcher:start_client(Node) of
@@ -90,13 +91,13 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
                     %% but it's good enough for now
-                    gen_server:call(NewPid, {{call,M,F,A},RecvTO,SendTO}, infinity);
+                    do_call(NewPid, M, F, A, RecvTO, SendTO);
                 {error, Reason} ->
                     Reason
             end;
         Pid ->
             ok = lager:debug("event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
-            gen_server:call(Pid, {{call,M,F,A},RecvTO,SendTO}, infinity)
+            do_call(Pid, M, F, A, RecvTO, SendTO)
     end.
 
 %% Simple server cast with no args and default timeout values
@@ -114,9 +115,9 @@ cast(Node, M, F, A) ->
 -spec cast(node(), module(), atom()|function(), list(), timeout() | undefined) -> true.
 cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    %% Naming our gen_server as the node we're calling as it is extremely efficent:
-    %% We'll never deplete atoms because all connected node names are already atoms in this VM
-    case whereis(Node) of
+    %% Create a unique name for the client because we register as such
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    case whereis(PidName) of
         undefined ->
             ok = lager:info("event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
             case gen_rpc_dispatcher:start_client(Node) of
@@ -152,57 +153,6 @@ eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom
     [cast(Node, M, F, A, SendTO) || Node <- Nodes],
     abcast.
 
-%% Safe server cast with no args and default timeout values
--spec safe_cast(node(), module(), atom()|function()) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F) ->
-    safe_cast(Node, M, F, [], undefined).
-
-%% Safe server cast with args and default timeout values
--spec safe_cast(node(), module(), atom()|function(), list()) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F, A) ->
-    safe_cast(Node, M, F, A, undefined).
-
-%% Safe server cast with custom send timeout value
-%% This is the function that all of the above casts call
--spec safe_cast(node(), module(), atom()|function(), list(), timeout() | undefined) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
-                                 SendTO =:= undefined orelse is_integer(SendTO) orelse SendTO =:= infinity ->
-    %% Naming our gen_server as the node we're calling as it is extremely efficent:
-    %% We'll never deplete atoms because all connected node names are already atoms in this VM
-    case whereis(Node) of
-        undefined ->
-            ok = lager:info("event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
-            case gen_rpc_dispatcher:start_client(Node) of
-                {ok, NewPid} ->
-                    %% We take care of CALL inside the gen_server
-                    %% This is not resilient enough if the caller's mailbox is full
-                    %% but it's good enough for now
-                    gen_server:call(NewPid, {{cast,M,F,A},SendTO}, infinity);
-                {error, Reason} ->
-                    Reason
-            end;
-        Pid ->
-            ok = lager:debug("event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
-            gen_server:call(Pid, {{cast,M,F,A},SendTO}, infinity)
-    end.
-
-%% Safely evaluate {M, F, A} on connected nodes.
--spec safe_eval_everywhere([node()], module(), atom()|function()) -> [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F) ->
-    safe_eval_everywhere(Nodes, M, F, [], undefined).
-
-%% Safely evaluate{M, F, A} on implicit connected nodes
--spec safe_eval_everywhere([node()], module(), atom()|function(), list()) ->  [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F, A) ->
-    safe_eval_everywhere(Nodes, M, F, A, undefined).
-
-%% Safe evaluate{M, F, A} on custom list of nodes.
--spec safe_eval_everywhere([node()], module(), atom()|function(), list(), timeout() | undefined) ->  [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A),
-                                             SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    Ret = [{Node, safe_cast(Node, M, F, A, SendTO)} || Node <- Nodes],
-    parse_safe_eval_everywhere_result(Ret, Nodes).
-
 %% Simple server async_call with no args
 -spec async_call(Node::node(), M::module(), F::atom()|function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F)->
@@ -231,7 +181,7 @@ nb_yield(Key)->
 nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Timeout) ->
     Pid ! {self(), Ref, yield},
     receive
-        {Pid, Ref, async_call_reply, Result} ->
+        {Pid, Ref, async_call, Result} ->
             {value,Result}
     after
         Timeout ->
@@ -262,187 +212,121 @@ multicall(Nodes, M, F, A, Timeout) when is_list(Nodes), is_atom(M), is_atom(F), 
 %%% ===================================================
 init({Node}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
-    ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
-    %% Extract application-specific settings
-    Settings = application:get_all_env(?APP),
-    {connect_timeout, ConnTO} = lists:keyfind(connect_timeout, 1, Settings),
-    {send_timeout, SendTO} = lists:keyfind(send_timeout, 1, Settings),
-    {receive_timeout, RecvTO} = lists:keyfind(receive_timeout, 1, Settings),
-    {client_inactivity_timeout, TTL} = lists:keyfind(client_inactivity_timeout, 1, Settings),
-    %% Perform an in-band RPC call to the remote node
-    %% asking it to launch a listener for us and return us
-    %% the port that has been allocated for us
-    ok = lager:info("event=initializing_client server_node=\"~s\" connect_timeout=~B send_timeout=~B receive_timeout=~B inactivity_timeout=\"~p\"",
-                    [Node, ConnTO, SendTO, RecvTO, TTL]),
-    case rpc:call(Node, gen_rpc_server_sup, start_child, [node()], ConnTO) of
-        {ok, Port} ->
-            %% Fetching the IP ourselves, since the remote node
-            %% does not have a straightforward way of returning
-            %% the proper remote IP
-            Address = get_remote_node_ip(Node),
-            ok = lager:debug("event=remote_server_started_successfully server_node=\"~s\" server_ip=\"~p:~B\"",
-                             [Node, Address, Port]),
-            case gen_tcp:connect(Address, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
+    TTL = gen_rpc_helper:get_inactivity_timeout(?MODULE),
+    ConnTO = gen_rpc_helper:get_connect_timeout(),
+    ok = lager:info("event=initializing_client node=\"~s\" connect_timeout=~B inactivity_timeout=\"~p\"", [Node, ConnTO, TTL]),
+    case connect_to_tcp_server(Node) of
+        {ok, IpAddress, Port} ->
+            ok = lager:debug("event=remote_server_started_successfully server_node=\"~s\" remote_port=\"~B\"", [Node, Port]),
+            case gen_tcp:connect(IpAddress, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
                 {ok, Socket} ->
-                    ok = lager:debug("event=connecting_to_server server_node=\"~s\" server_ip=\"~p:~B\" result=success",
-                                     [Node, Address, Port]),
-                    {ok, #state{socket=Socket,server_node=Node,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
+                    ok = lager:debug("event=connecting_to_server server_node=\"~s\" peer=\"~s\" result=success",
+                                     [Node, gen_rpc_helper:peer_to_string({IpAddress, Port})]),
+                    {ok, #state{socket=Socket}, TTL};
                 {error, Reason} ->
                     ok = lager:error("event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
-                                     [Node, Address, Port, Reason]),
+                                     [Node, gen_rpc_helper:peer_to_string({IpAddress, Port}), Reason]),
                     {stop, {badtcp,Reason}}
             end;
-        {badrpc, Reason} ->
-            {stop, {badrpc, Reason}}
+        {error, Reason} ->
+            {stop, {badrpc,Reason}}
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket,server_node=Node} = State) ->
-    {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
-    Ref = erlang:make_ref(),
-    %% Spawn the worker that will wait for the server's reply
-    WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), Ref, Caller, RecvTO]),
-    %% Let the server know of the responsible process
-    Packet = erlang:term_to_binary({node(), WorkerPid, Ref, PacketTuple}),
-    ok = lager:debug("message=call event=constructing_call_term socket=\"~p\" call_ref=\"~p\"",
-                     [Socket, Ref]),
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
-    %% Since call can fail because of a timed out connection without gen_rpc knowing it,
-    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
-    case net_kernel:connect(Node) of
-        true ->
-            case gen_tcp:send(Socket, Packet) of
-                {error, timeout} ->
-                    ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
-                                     [Socket, Ref]),
-                    ok = harakiri(),
-                    %% Reply will be handled from the worker
-                    {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
-                {error, Reason} ->
-                    ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"~p\"",
-                                     [Socket, Ref, Reason]),
-                    ok = harakiri(),
-                    %% Reply will be handled from the worker
-                    {stop, {badtcp,Reason}, {badtcp,Reason}, State};
-                ok ->
-                    ok = lager:debug("message=call event=transmission_succeeded socket=\"~p\" call_ref=\"~p\"",
-                                     [Socket, Ref]),
-                    %% We need to enable the socket and perform the call only if the call succeeds
-                    ok = inet:setopts(Socket, [{active, once}]),
-                    %% Reply will be handled from the worker
-                    {noreply, State, State#state.inactivity_timeout}
-            end;
-        _Else ->
-            ok = lager:error("message=call event=node_down socket=\"~p\" call_ref=\"~p\"",
-                             [Socket, Ref]),
-            ok = harakiri(),
-            {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
-    end;
-
-%% This is the actual CAST handler for SAFE_CAST
-handle_call({{cast,_M,_F,_A} = PacketTuple, USendTO}, _Caller, #state{socket=Socket,server_node=Node} = State) ->
-    case do_cast(PacketTuple, USendTO, Socket, Node, State) of
-        {error, Error} ->
-            ok = harakiri(),
-            {stop, Error, Error, State};
+handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket} = State) ->
+    Packet = erlang:term_to_binary({PacketTuple, Caller}),
+    ok = lager:debug("message=call event=constructing_call_term socket=\"~p\" caller=\"~p\"", [Socket, Caller]),
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(SendTO)}]),
+    case gen_tcp:send(Socket, Packet) of
+        {error, timeout} ->
+            ok = lager:error("message=call event=transmission_failed socket=\"~p\" caller=\"~p\" reason=\"timeout\"", [Socket, Caller]),
+            {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
+        {error, Reason} ->
+            ok = lager:error("message=call event=transmission_failed socket=\"~p\" caller=\"~p\" reason=\"~p\"", [Socket, Caller, Reason]),
+            {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
-            {reply, true, State, State#state.inactivity_timeout}
-    end;
-
-%% This is the actual ASYNC CALL handler
-handle_call({{async_call,_M,_F,_A} = PacketTuple, Ref}, {Caller,_GenRef}, #state{socket=Socket,server_node=Node,send_timeout=SendTO} = State) ->
-    Packet = erlang:term_to_binary({node(), Caller, Ref, PacketTuple}),
-    ok = lager:debug("message=call event=constructing_async_call_term socket=\"~p\" worker_pid=\"~p\" async_call_ref=\"~p\"",
-                     [Socket, Caller, Ref]),
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
-    %% Since call can fail because of a timed out connection without gen_rpc knowing it,
-    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
-    case net_kernel:connect(Node) of
-        true ->
-            case gen_tcp:send(Socket, Packet) of
-                {error, timeout} ->
-                    ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
-                                     [Socket, Caller, Ref]),
-                    ok = harakiri(),
-                    %% Reply will be handled from the worker
-                    {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
-                {error, Reason} ->
-                    ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
-                                     [Socket, Caller, Ref, Reason]),
-                    ok = harakiri(),
-                    %% Reply will be handled from the worker
-                    {stop, {badtcp,Reason}, {badtcp,Reason}, State};
-                ok ->
-                    ok = lager:debug("message=async_call event=transmission_succeeded socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\"",
-                                     [Socket, Caller, Ref]),
-                    %% We need to enable the socket and perform the call only if the call succeeds
-                    ok = inet:setopts(Socket, [{active, once}]),
-                    %% Reply will be handled from the worker
-                    {reply, ok, State, State#state.inactivity_timeout}
-            end;
-        _Else ->
-            ok = lager:error("message=call event=node_down socket=\"~p\" call_ref=\"~p\"",
-                             [Socket, Ref]),
-            ok = harakiri(),
-            {stop, {badrpc,nodedown}, {badrpc,nodedown}, State}
+            ok = lager:debug("message=call event=transmission_succeeded socket=\"~p\" caller=\"~p\"", [Socket, Caller]),
+            %% We need to enable the socket and perform the call only if the call succeeds
+            ok = inet:setopts(Socket, [{active, once}]),
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Gracefully terminate
 handle_call(stop, _Caller, State) ->
     ok = lager:debug("event=stopping_client socket=\"~p\"", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, State) ->
     ok = lager:critical("event=uknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% This is the actual CAST handler for CAST
-handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket,server_node=Node} = State) ->
-    case do_cast(PacketTuple, USendTO, Socket, Node, State) of
-        {error, Error} ->
-            ok = harakiri(),
-            {stop, Error, State};
+handle_cast({{cast,_M,_F,_A} = PacketTuple, SendTO}, #state{socket=Socket} = State) ->
+    %% Cast requests do not need a reference
+    Packet = erlang:term_to_binary(PacketTuple),
+    ok = lager:debug("message=cast event=constructing_cast_term socket=\"~p\"", [Socket]),
+    %% Set the send timeout and do not run in active mode - we're a cast!
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(SendTO)}]),
+    case gen_tcp:send(Socket, Packet) of
+        {error, timeout} ->
+            %% Terminate will handle closing the socket
+            ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
+            {stop, {badtcp,send_timeout}, State};
+        {error, Reason} ->
+            ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+            {stop, {badtcp,Reason}, State};
         ok ->
-            {noreply, State, State#state.inactivity_timeout}
+            ok = lager:debug("message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
+    end;
+
+%% This is the actual ASYNC CALL handler
+handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket} = State) ->
+    Packet = erlang:term_to_binary({PacketTuple, {Caller,Ref}}),
+    ok = lager:debug("message=call event=constructing_async_call_term socket=\"~p\" worker_pid=\"~p\" async_call_ref=\"~p\"",
+                     [Socket, Caller, Ref]),
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
+    case gen_tcp:send(Socket, Packet) of
+        {error, timeout} ->
+            ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
+                             [Socket, Caller, Ref]),
+            {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
+        {error, Reason} ->
+            ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
+                             [Socket, Caller, Ref, Reason]),
+            {stop, {badtcp,Reason}, {badtcp,Reason}, State};
+        ok ->
+            ok = lager:debug("message=async_call event=transmission_succeeded socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\"",
+                             [Socket, Caller, Ref]),
+            %% We need to enable the socket and perform the call only if the call succeeds
+            ok = inet:setopts(Socket, [{active, once}]),
+            %% Reply will be handled from the worker
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, State) ->
     ok = lager:critical("event=uknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_cast, Msg}, State}.
 
 %% Handle any TCP packet coming in
 handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
     _Reply = try erlang:binary_to_term(Data) of
-        {CallReply, {WorkerPid, Ref, Reply}} ->
-            case erlang:is_process_alive(WorkerPid) of
-                true ->
-                    ok = lager:debug("message=tcp event=reply_received call_ref=\"~p\" worker_pid=\"~p\" action=sending_to_worker",
-                                     [Ref, WorkerPid]),
-                    WorkerPid ! {self(), Ref, CallReply, Reply};
-                false ->
-                    ok = lager:notice("message=tcp event=reply_received_with_dead_worker call_ref=\"~p\" worker_pid=\"~p\"",
-                                      [Ref, WorkerPid])
-            end;
+        {call, Caller, Reply} ->
+            ok = lager:debug("message=tcp event=call_reply_received caller=\"~p\" action=sending_reply", [Caller]),
+            gen_server:reply(Caller, Reply);
+        {async_call, {Caller, Ref}, Reply} ->
+            ok = lager:debug("message=tcp event=async_call_reply_received caller=\"~p\" action=sending_reply", [Caller]),
+            Caller ! {self(), Ref, async_call, Reply};
         OtherData ->
-            ok = lager:error("message=tcp event=erroneous_reply_received socket=\"~p\" data=\"~p\" action=ignoring",
-                             [Socket, OtherData])
+            ok = lager:error("message=tcp event=erroneous_reply_received socket=\"~p\" data=\"~p\" action=ignoring", [Socket, OtherData])
     catch
         error:badarg ->
             ok = lager:error("message=tcp event=corrupt_data_received socket=\"~p\" action=ignoring", [Socket])
     end,
     ok = inet:setopts(Socket, [{active, once}]),
-    {noreply, State, State#state.inactivity_timeout};
-
-%% Handle VM node down information
-handle_info({nodedown, Node, [{nodedown_reason,Reason}]}, #state{socket=Socket,server_node=Node} = State) ->
-    ok = lager:warning("message=nodedown event=node_down socket=\"~p\" node=~s reason=\"~p\" action=stopping", [Socket, Node, Reason]),
-    ok = harakiri(),
-    {stop, normal, State};
+    {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
 
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
@@ -450,23 +334,16 @@ handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
 
 handle_info({tcp_error, Socket, Reason}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_error event=tcp_socket_error socket=\"~p\" reason=\"~p\" action=stopping", [Socket, Reason]),
-    ok = harakiri(),
     {stop, normal, State};
-
-%% Stub for VM up information
-handle_info({NodeEvent, _Node, _InfoList}, State) when NodeEvent =:= nodeup; NodeEvent =:= nodedown ->
-    {noreply, State, State#state.inactivity_timeout};
 
 %% Handle the inactivity timeout gracefully
 handle_info(timeout, State) ->
     ok = lager:info("message=timeout event=client_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
-    ok = harakiri(),
     {stop, normal, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
     ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    ok = harakiri(),
     {stop, {unknown_info, Msg}, State}.
 
 %% Stub functions
@@ -475,134 +352,114 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, #state{socket=Socket}) ->
     ok = lager:debug("socket=\"~p\"", [Socket]),
-    ok = harakiri(),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-harakiri() ->
-    _Pid = erlang:spawn(gen_rpc_client_sup, stop_child, [self()]),
-    ok.
-
-%% DRY function for cast and safe_cast
-do_cast(PacketTuple, USendTO, Socket, Node, State) ->
-    {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
-    %% Cast requests do not need a reference
-    Packet = erlang:term_to_binary({node(), PacketTuple}),
-    ok = lager:debug("message=cast event=constructing_cast_term socket=\"~p\"", [Socket]),
-    %% Set the send timeout and do not run in active mode - we're a cast!
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
-    %% Since cast can fail because of a timed out connection without gen_rpc knowing it,
-    %% we have to make sure the remote node is reachable somehow before we send data. net_kernel:connect does that
-    case net_kernel:connect(Node) of
-        true ->
-            case gen_tcp:send(Socket, Packet) of
-                {error, timeout} ->
-                    %% Terminate will handle closing the socket
-                    ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"timeout\"", [Socket]),
-                    {error, {badtcp,send_timeout}};
-                {error, Reason} ->
-                    ok = lager:error("message=cast event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
-                    {error, {badtcp,Reason}};
-                ok ->
-                    ok = lager:debug("message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
-                    ok
-            end;
-        _Else ->
-            ok = lager:error("message=cast event=node_down socket=\"~p\"", [Socket]),
-            {error, {badrpc,nodedown}}
+connect_to_tcp_server(Node) ->
+    Host = gen_rpc_helper:host_from_node(Node),
+    Port = gen_rpc_helper:get_tcp_server_port(),
+    case gen_tcp:connect(Host, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ?TCP_SERVER_CONN_TIMEOUT) of
+        {ok, Socket} ->
+            ok = lager:debug("event=connecting_to_server peer=\"~s\" socket=\"~p\" result=success", [Node, Socket]),
+            {ok, {IpAddress, _Port}} = inet:peername(Socket),
+            get_node_port(Socket, IpAddress);
+        {error, Reason} ->
+            ok = lager:error("event=connecting_to_server peer=\"~s\" result=failure reason=\"~p\"", [Node, Reason]),
+            {error, Reason}
     end.
 
-%% For loopback communication and performance testing
-get_remote_node_ip(Node) when Node =:= node() ->
-    {127,0,0,1};
-get_remote_node_ip(Node) ->
-    {ok, NodeInfo} = net_kernel:node_info(Node),
-    {address, AddressInfo} = lists:keyfind(address, 1, NodeInfo),
-    {net_address, {Ip, _Port}, _Name, _Proto, _Channel} = AddressInfo,
-    ok = lager:debug("node=\"~s\" ip_address=\"~p\"", [Node, Ip]),
-    Ip.
+get_node_port(Socket, IpAddress) ->
+    Cookie = erlang:get_cookie(),
+    Packet = erlang:term_to_binary({start_gen_rpc_server, Cookie}),
+    ok = inet:setopts(Socket, [{send_timeout, ?TCP_SERVER_SEND_TIMEOUT}]),
+    case gen_tcp:send(Socket, Packet) of
+        {error, Reason} ->
+            ok = lager:error("event=transmission_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+            ok = gen_tcp:close(Socket),
+            {error, Reason};
+        ok ->
+            ok = lager:debug("event=transmission_succeeded socket=\"~p\"", [Socket]),
+            case gen_tcp:recv(Socket, 0, ?TCP_SERVER_RECV_TIMEOUT) of
+                {ok, RecvPacket} ->
+                    try erlang:binary_to_term(RecvPacket) of
+                        {gen_rpc_server_started, Port} ->
+                            ok = gen_tcp:close(Socket),
+                            {ok, IpAddress, Port};
+                        {connection_rejected, invalid_cookie} ->
+                            ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_cookie\"", [Socket]),
+                            ok = gen_tcp:close(Socket),
+                            {error, badrpc};
+                        _Else ->
+                            ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_payload\"", [Socket]),
+                            ok = gen_tcp:close(Socket),
+                            {error, badrpc}
+                    catch
+                        error:badarg ->
+                            ok = gen_tcp:close(Socket),
+                            ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_erlang_term\"", [Socket]),
+                            {error, badrpc}
+                    end;
+                {error, Reason} ->
+                    ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
+                    ok = gen_tcp:close(Socket),
+                    {error, Reason}
+            end
+    end.
 
-%% This function is a process launched by the gen_server, waiting to receive a
-%% reply from the TCP channel via the gen_server
-call_worker(SrvPid, Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
-    receive
-        {SrvPid,Ref,call_reply,Reply} ->
-            ok = lager:debug("event=reply_received call_ref=\"~p\" reply=\"~p\"", [Ref, Reply]),
-            _Ign = gen_server:reply(Caller, Reply),
-            ok;
-        Else ->
-            ok = lager:error("event=invalid_message_received call_ref=\"~p\" message=\"~p\"", [Ref, Else]),
-            _Ign = gen_server:reply(Caller, {badrpc, invalid_message_received})
-    after
-        Timeout ->
-            ok = lager:notice("event=call_timeout call_ref=\"~p\"", [Ref]),
-            _Ign = gen_server:reply(Caller, {badrpc, timeout})
+do_call(Pid, M, F, A, RecvTO, SendTO) ->
+    try
+        gen_server:call(Pid, {{call,M,F,A}, SendTO}, gen_rpc_helper:get_receive_timeout(RecvTO))
+    catch
+        exit:{timeout,_Reason} ->
+            {badrpc,timeout}
     end.
 
 async_call_worker(Node, M, F, A, Ref) ->
-    {ok, CleanupTimeout} = application:get_env(?APP, async_call_inactivity_timeout),
-    SrvPid = case whereis(Node) of
+    TTL = gen_rpc_helper:get_async_call_inactivity_timeout(),
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    SrvPid = case whereis(PidName) of
         undefined ->
             ok = lager:info("event=client_process_not_found server_node=\"~s\" action=spawning_client", [Node]),
             case gen_rpc_dispatcher:start_client(Node) of
                 {ok, NewPid} ->
-                    ok = gen_server:call(NewPid, {{async_call,M,F,A},Ref}),
+                    ok = gen_server:cast(NewPid, {{async_call,M,F,A}, self(), Ref}),
                     NewPid;
                 {error, {badrpc, _} = RpcError} ->
                     RpcError
             end;
         Pid ->
             ok = lager:debug("event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
-            ok = gen_server:call(Pid, {{async_call,M,F,A},Ref}),
+            ok = gen_server:cast(Pid, {{async_call,M,F,A}, self(), Ref}),
             Pid
     end,
     case SrvPid of
         SrvPid when is_pid(SrvPid) ->
             receive
-                %% Wait for the reply from the node's gen_rpc server
-                {SrvPid,Ref,async_call_reply,Reply} ->
+                %% Wait for the reply from the node's gen_rpc client process
+                {SrvPid,Ref,async_call,Reply} ->
                     %% Wait for a yield request from the caller
                     receive
-                        {Caller, Ref, yield} when is_pid(Caller), is_reference(Ref) ->
-                            Caller ! {self(), Ref, async_call_reply, Reply}
+                        {YieldPid,Ref,yield} ->
+                            YieldPid ! {self(), Ref, async_call, Reply}
                     after
-                        CleanupTimeout ->
+                        TTL ->
                             exit({error, async_call_cleanup_timeout_reached})
                     end
             after
-                CleanupTimeout ->
+                TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end;
         TRpcError ->
             %% Wait for a yield request from the caller
             receive
-                {Caller, Ref, yield} when is_pid(Caller), is_reference(Ref) ->
-                    Caller ! {self(), Ref, async_call_reply, TRpcError}
+                {YieldPid,Ref,yield} ->
+                    YieldPid ! {self(), Ref, async_call, TRpcError}
             after
-                CleanupTimeout ->
+                TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end
-    end.
-
-%% Merges user-define timeout values with state timeout values
-merge_timeout_values(SRecvTO, undefined, SSendTO, undefined) ->
-    {SRecvTO, SSendTO};
-merge_timeout_values(_SRecvTO, URecvTO, SSendTO, undefined) ->
-    {URecvTO, SSendTO};
-merge_timeout_values(SRecvTO, undefined, _SSendTO, USendTO) ->
-    {SRecvTO, USendTO};
-merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
-    {URecvTO, USendTO}.
-
-%% Transform result for safe_eval_everywhere to look like multicall
-parse_safe_eval_everywhere_result(ResultNodes, AllNodes) ->
-    BadNodes = [ X || {X, {_,_}} <- ResultNodes],
-    GoodNodes = AllNodes -- BadNodes,
-    case GoodNodes =/= [] of
-        true -> [true, BadNodes];
-        false -> BadNodes
     end.
 
 parse_multicall_results(Keys, Nodes, undefined) ->
