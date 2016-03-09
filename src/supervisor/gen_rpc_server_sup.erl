@@ -39,7 +39,7 @@ start_child(Peer) when is_tuple(Peer) ->
     end.
 
 %% Terminate and unregister a child server
--spec stop_child(Pid::pid()) -> 'ok'.
+-spec stop_child(Pid::pid()) -> ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_server server_pid=\"~p\"", [Pid]),
     %% Terminate the acceptor child first and then

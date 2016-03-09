@@ -29,16 +29,17 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link() -> gen_sever:startlink_ret().
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
 
+-spec stop() -> ok.
 stop() ->
     gen_server:call(?MODULE, stop).
 
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
--spec init({}) -> {'ok', #state{}} | {'stop', any()}.
 init({}) ->
     {ok, Port} = application:get_env(?APP, tcp_server_port),
     case gen_tcp:listen(Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of

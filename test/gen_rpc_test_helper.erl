@@ -34,7 +34,7 @@ start_distribution(Node)->
         {error,{already_started, _Pid}} ->
             {ok, {Node, already_started}};
         {error, Reason} ->
-            ok = ct:pal("function=start_target event=fail_start_target Reason=\"~p\"", [Reason]),
+            ok = ct:pal("function=start_target event=fail_start_target reason=\"~p\"", [Reason]),
             {error, Reason}
     end.
 
@@ -66,6 +66,7 @@ set_application_environment(Node) when is_atom(Node) ->
 restart_application() ->
     _ = application:stop(?APP),
     _ = application:unload(?APP),
+    ok = timer:sleep(100),
     ok = application:start(?APP),
     ok.
 
@@ -105,4 +106,4 @@ spawn_short_running() ->
     spawn(fun() -> exit(normal) end).
 
 ping({Node, Process, Msg}) ->
-    {Process, Node} ! {'pong', {node(), Process, Msg}}.
+    {Process, Node} ! {pong, {node(), Process, Msg}}.

@@ -37,7 +37,7 @@ start_child(Peer) when is_tuple(Peer) ->
             {ok, Pid}
     end.
 
--spec stop_child(Pid::pid()) ->  'ok'.
+-spec stop_child(Pid::pid()) -> ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),

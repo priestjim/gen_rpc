@@ -37,16 +37,19 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link({inet:ip4_address(), inet:port_number()}) -> gen_fsm:startlink_ret().
 start_link(Peer) when is_tuple(Peer) ->
     Name = gen_rpc_helper:make_process_name("acceptor", Peer),
     gen_fsm:start_link({local,Name}, ?MODULE, {Peer}, [{spawn_opt, [{priority, high}]}]).
 
+-spec stop(pid()) -> ok.
 stop(Pid) when is_pid(Pid) ->
      gen_fsm:sync_send_all_state_event(Pid, stop).
 
 %%% ===================================================
 %%% Server functions
 %%% ===================================================
+-spec set_socket(pid(), gen_tcp:socket()) -> ok.
 set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
     gen_fsm:send_event(Pid, {socket_ready, Socket}).
 

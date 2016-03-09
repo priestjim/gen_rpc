@@ -50,10 +50,12 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
+-spec start_link(node()) -> gen_server:startlink_ret().
 start_link(Node) when is_atom(Node) ->
     PidName = gen_rpc_helper:make_process_name("client", Node),
     gen_server:start_link({local,PidName}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
 
+-spec stop(node()) -> ok.
 stop(Node) when is_atom(Node) ->
     gen_server:call(Node, stop).
 
@@ -62,19 +64,23 @@ stop(Node) when is_atom(Node) ->
 %%% ===================================================
 
 %% Simple server call with no args and default timeout values
+-spec call(node(), module(), atom()|function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F) ->
     call(Node, M, F, [], undefined, undefined).
 
 %% Simple server call with args and default timeout values
+-spec call(node(), module(), atom()|function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A) ->
     call(Node, M, F, A, undefined, undefined).
 
 %% Simple server call with custom receive timeout value
+-spec call(node(), module(), atom()|function(), list(), timeout()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO) ->
     call(Node, M, F, A, RecvTO, undefined).
 
 %% Simple server call with custom receive and send timeout values
 %% This is the function that all of the above call
+-spec call(node(), module(), atom()|function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse ?is_timeout(RecvTO),
                                          SendTO =:= undefined orelse ?is_timeout(SendTO) ->
@@ -98,15 +104,18 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
     end.
 
 %% Simple server cast with no args and default timeout values
+-spec cast(node(), module(), atom()|function()) -> true.
 cast(Node, M, F) ->
     cast(Node, M, F, [], undefined).
 
 %% Simple server cast with args and default timeout values
+-spec cast(node(), module(), atom()|function(), list()) -> true.
 cast(Node, M, F, A) ->
     cast(Node, M, F, A, undefined).
 
 %% Simple server cast with custom send timeout value
 %% This is the function that all of the above casts call
+-spec cast(node(), module(), atom()|function(), list(), timeout() | undefined) -> true.
 cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     %% Create a unique name for the client because we register as such
@@ -131,39 +140,47 @@ cast(Node, M, F, A, SendTO) when is_atom(Node), is_atom(M), is_atom(F), is_list(
     end.
 
 %% Evaluate {M, F, A} on connected nodes.
+-spec eval_everywhere([node()], module(), atom()|function()) -> abcast.
 eval_everywhere(Nodes, M, F) ->
     eval_everywhere(Nodes, M, F, [], undefined).
 
 %% Evaluate {M, F, A} on connected nodes.
+-spec eval_everywhere([node()], module(), atom()|function(), list()) -> abcast.
 eval_everywhere(Nodes, M, F, A) ->
     eval_everywhere(Nodes, M, F, A, undefined).
 
 %% Evaluate {M, F, A} on connected nodes.
+-spec eval_everywhere([node()], module(), atom()|function(), list(), timeout() | undefined) -> abcast.
 eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A),
                                              SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     [cast(Node, M, F, A, SendTO) || Node <- Nodes],
     abcast.
 
 %% Simple server async_call with no args
+-spec async_call(Node::node(), M::module(), F::atom()|function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F)->
     async_call(Node, M, F, []).
 
 %% Simple server async_call with args
+-spec async_call(Node::node(), M::module(), F::atom()|function(), A::list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F, A) when is_atom(Node), is_atom(M), is_atom(F), is_list(A) ->
     Ref = erlang:make_ref(),
     Pid = erlang:spawn(?MODULE, async_call_worker, [Node, M, F, A, Ref]),
     {Pid, Ref}.
 
 %% Simple server yield with key. Delegate to nb_yield. Default timeout form configuration.
+-spec yield(tuple()) -> term() | {badrpc, term()}.
 yield(Key) ->
     {value,Result} = nb_yield(Key, infinity),
     Result.
 
 %% Simple server non-blocking yield with key, default timeout value of 0
+-spec nb_yield(tuple()) -> {value, term()} | {badrpc, term()}.
 nb_yield(Key)->
     nb_yield(Key, 0).
 
 %% Simple server non-blocking yield with key and custom timeout value
+-spec nb_yield(tuple(), timeout()) -> {value, term()} | {badrpc, term()}.
 nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Timeout) ->
     Pid ! {self(), Ref, yield},
     receive
@@ -176,9 +193,11 @@ nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Ti
     end.
 
 %% "Concurrent" call to a set of servers
+-spec multicall(module(), atom(), list()) -> {list(), list()}.
 multicall(M, F, A) when is_atom(M), is_atom(F), is_list(A) ->
     multicall([node()|gen_rpc:nodes()], M, F, A).
 
+-spec multicall(list() | module(), module() | atom(), atom() | list(), list() | timeout()) -> {list(), list()}.
 multicall(M, F, A, Timeout) when is_atom(M), is_atom(F), is_list(A), ?is_timeout(Timeout) ->
     multicall([node()|gen_rpc:nodes()], M, F, A, Timeout);
 
@@ -186,6 +205,7 @@ multicall(Nodes, M, F, A) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A
     Keys = [async_call(Node, M, F, A) || Node <- Nodes],
     parse_multicall_results(Keys, Nodes, undefined).
 
+-spec multicall(list(), module(), atom(), list(), timeout()) -> {list(), list()}.
 multicall(Nodes, M, F, A, Timeout) when is_list(Nodes), is_atom(M), is_atom(F), is_list(A), ?is_timeout(Timeout) ->
     Keys = [async_call(Node, M, F, A) || Node <- Nodes],
     parse_multicall_results(Keys, Nodes, Timeout).

@@ -23,6 +23,7 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+-spec start_child({inet:ip4_address(), inet:port_number()}) -> {ok, pid()} | {error, any()}.
 start_child(Peer) when is_tuple(Peer) ->
     ok = lager:debug("event=starting_new_acceptor peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     case supervisor:start_child(?MODULE, [Peer]) of
@@ -36,7 +37,7 @@ start_child(Peer) when is_tuple(Peer) ->
             {ok, Pid}
     end.
 
--spec stop_child(Pid::pid()) ->  'ok'.
+-spec stop_child(pid()) ->  ok.
 stop_child(Pid) when is_pid(Pid) ->
     ok = lager:debug("event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
