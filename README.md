@@ -113,7 +113,29 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 ## Architecture
 
-TBD.
+In order to achieve the mailbox-per-node feature, `gen_rpc` uses a very specific architecture:
+
+- Whenever a client neesd to send data to a remote node, it will perform a `whereis` to a process named after the remote node. This is deliberate as it allows fast process lookups without atom-to-term conversions
+
+- If the specified `client` process does not exist, it will request for a new one through the `dispatcher` process, which in turn will launch it through the appropriate supervisor. Since this `whereis`-request from dispatcher sequence can happen concurrently by many different processes, serializing it behind a `gen_server` allows us to avoid race conditions.
+
+- The `dispatcher` process will perform an normal `rpc` call to the other node, requesting from the `server` supervisor to launch a new `server` listener.
+
+- The `server` supervisor will launch the new `server` process, which in turn will dynamically allocate (`gen_tcp:listen(0)`) a port and return it to its supervisor.
+
+- The `server` supervisor returns the port to the `client` through `rpc`.
+
+- The `client` then connects to the returned port and establishes a TCP session. The `server` on the other node launches a new `acceptor` server as soon as a `client` connects. The relationship between `client`-`server`-`acceptor` is one-to-one-to-one.
+
+- The `client` finally encodes the request (`call`, `cast` etc.) along with some metadata (the caller's PID and a reference) and sends it over the TCP channel. At the same time, it launches a process that will be responsible for handing the server's reply to the requester.
+
+- The `server` on the other side decodes the TCP message received and spawns a new process that will perform the requested function. By spawning a process external to the server, the `server` protects itself from misbehaving function calls.
+
+- As soon as the reply from the server is ready (only needed in `async_call` and `call`), the `server` spawned process messages the server with the reply, the `server` ships it through the TCP channel to the `client`, the `client` messages the spawned worker and the worker replies to the caller with the result.
+
+All `gen_tcp` processes are properly linked so that any TCP failure will cascade and close the TCP channels and any new connection will allocate a new process and port.
+
+An inactivity timeout has been implemented inside the `client` and `server` processes to free unused TCP connections after some time, in case that's needed.
 
 ## Performance
 
