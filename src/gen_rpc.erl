@@ -14,10 +14,10 @@
 -export([async_call/3, async_call/4, yield/1, nb_yield/1, nb_yield/2]).
 
 %% Cast and safe_cast
--export([cast/3, cast/4, cast/5, safe_cast/3, safe_cast/4, safe_cast/5]).
+-export([cast/3, cast/4, cast/5]).
 
 %% Parallel evaluation
--export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5, safe_eval_everywhere/3, safe_eval_everywhere/4, safe_eval_everywhere/5]).
+-export([eval_everywhere/3, eval_everywhere/4, eval_everywhere/5]).
 
 %% Parallel sync call
 -export([multicall/3, multicall/4, multicall/5]).
@@ -77,30 +77,6 @@ eval_everywhere(Nodes, M, F, A) ->
 -spec eval_everywhere([node()], module(), atom()|function(), list(), timeout() | undefined) -> abcast.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A, SendTO).
-
--spec safe_cast(node(), module(), atom()|function()) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F) ->
-    gen_rpc_client:safe_cast(Node, M, F).
-
--spec safe_cast(node(), module(), atom()|function(), list()) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F, A) ->
-    gen_rpc_client:safe_cast(Node, M, F, A).
-
--spec safe_cast(node(), module(), atom()|function(), list(), timeout() | undefined) -> true | {badrpc, term()} | {badtcp | term()}.
-safe_cast(Node, M, F, A, SendTO) ->
-    gen_rpc_client:safe_cast(Node, M, F, A, SendTO).
-
--spec safe_eval_everywhere([node()], module(), atom()|function()) -> [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F) ->
-    gen_rpc_client:safe_eval_everywhere(Nodes, M, F).
-
--spec safe_eval_everywhere([node()], module(), atom()|function(), list()) ->  [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F, A) ->
-    gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A).
-
--spec safe_eval_everywhere([node()], module(), atom()|function(), list(), timeout() | undefined) ->  [true  | [node()]].
-safe_eval_everywhere(Nodes, M, F, A, SendTO) ->
-    gen_rpc_client:safe_eval_everywhere(Nodes, M, F, A, SendTO).
 
 -spec yield(tuple()) -> term() | {badrpc, term()}.
 yield(Key) ->
