@@ -22,9 +22,12 @@
         {gen_rpc, send_timeout, 500},
         {lager, colored, true},
         {lager, handlers, [
-            {lager_file_backend, [{file, "messages.log"}, {level, info}, {formatter, lager_default_formatter}, {size, 0}, {date, "$D0"}, {count, 7},
+            % Commented out to reduce test output polution, uncomment during development
+            % {lager_common_test_backend, [debug,
+            %     {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
+            %         "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}]},
+            {lager_file_backend, [{file, "messages.log"}, {level, debug}, {formatter, lager_default_formatter}, {size, 0}, {date, "$D0"}, {count, 7},
                 {formatter_config, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
-                    "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}
-            ]}
+                    "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}]}
         ]}
 ]).

@@ -44,13 +44,14 @@ start_client(Node) when is_atom(Node) ->
 %%% ===================================================
 init([]) ->
     ok = lager:info("event=start"),
-    process_flag(trap_exit, true),
+    _OldVal = process_flag(trap_exit, true),
     {ok, undefined}.
 
 %% Simply launch a connection to a node through the appropriate
 %% supervisor. This is a serialization interface so that
 handle_call({start_client, Node}, _Caller, undefined) ->
-    Reply = case whereis(Node) of
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    Reply = case whereis(PidName) of
         undefined ->
             ok = lager:debug("message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
             gen_rpc_client_sup:start_child(Node);

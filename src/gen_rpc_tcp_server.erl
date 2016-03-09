@@ -6,7 +6,7 @@
 %%% Original concept inspired and some code copied from
 %%% https://erlangcentral.org/wiki/index.php?title=Building_a_Non-blocking_TCP_server_using_OTP_principles
 
--module(gen_rpc_server).
+-module(gen_rpc_tcp_server).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
@@ -17,15 +17,10 @@
 
 %%% Local state
 -record(state, {socket :: port(),
-        peer :: tuple(),
-        acceptor_pid :: pid(),
         acceptor :: prim_inet:insock()}).
 
 %%% Supervisor functions
--export([start_link/1, stop/1]).
-
-%%% Server functions
--export([get_port/1]).
+-export([start_link/0, stop/0]).
 
 %%% Behaviour callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -34,44 +29,28 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link({inet:ip4_address(), inet:port_number()}) -> gen_sever:startlink_ret().
-start_link(Peer) when is_tuple(Peer) ->
-    Name = gen_rpc_helper:make_process_name("server", Peer),
-    gen_server:start_link({local,Name}, ?MODULE, {Peer}, [{spawn_opt, [{priority, high}]}]).
+-spec start_link() -> gen_sever:startlink_ret().
+start_link() ->
+    gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
 
--spec stop(pid()) -> ok.
-stop(Pid) when is_pid(Pid) ->
-    gen_server:call(Pid, stop).
-
-%%% ===================================================
-%%% Server functions
-%%% ===================================================
--spec get_port(pid()) -> {ok, inet:port_number()} | {error, term()} | term(). %dialyzer complains without term().
-get_port(Pid) when is_pid(Pid) ->
-    gen_server:call(Pid, get_port).
+-spec stop() -> ok.
+stop() ->
+    gen_server:call(?MODULE, stop).
 
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
-init({Peer}) ->
-    _OldVal = process_flag(trap_exit, true),
-    case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
+init({}) ->
+    {ok, Port} = application:get_env(?APP, tcp_server_port),
+    case gen_tcp:listen(Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
-            ok = lager:info("event=listener_started_successfully peer=\"~s\"",
-                            [gen_rpc_helper:peer_to_string(Peer)]),
+            ok = lager:info("event=listener_started_successfully port=\"~B\"", [Port]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
-            {ok, #state{peer=Peer, socket=Socket, acceptor=Ref}};
+            {ok, #state{socket=Socket, acceptor=Ref}};
         {error, Reason} ->
-            ok = lager:critical("event=failed_to_start_listener peer=\"~s\" reason=\"~p\"",
-                                [gen_rpc_helper:peer_to_string(Peer), Reason]),
+            ok = lager:critical("event=failed_to_start_listener reason=\"~p\"", [Reason]),
             {stop, Reason}
     end.
-
-%% Returns the dynamic port the current TCP server listens to
-handle_call(get_port, _From, #state{socket=Socket} = State) ->
-    {ok, Port} = inet:port(Socket),
-    ok = lager:debug("message=get_port socket=\"~p\" port=~B", [Socket,Port]),
-    {reply, {ok, Port}, State};
 
 %% Gracefully stop
 handle_call(stop, _From, State) ->
@@ -88,33 +67,24 @@ handle_cast(Msg, State) ->
     ok = lager:critical("event=unknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
     {stop, {unknown_cast, Msg}, State}.
 
-handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
-            #state{peer=Peer, socket=ListSock, acceptor=Ref} = State) ->
+handle_info({inet_async, ListSock, Ref, {ok, AccSocket}}, #state{socket=ListSock, acceptor=Ref} = State) ->
     try
-        ok = lager:info("event=client_connection_received peer=\"~s\" socket=\"~p\" action=starting_acceptor",
+        {ok, Peer} = inet:peername(AccSocket),
+        ok = lager:info("event=client_connection_received client_ip=\"~s\" socket=\"~p\" action=starting_acceptor",
                           [gen_rpc_helper:peer_to_string(Peer), ListSock]),
         %% Start an acceptor process. We need to provide the acceptor
-        %% process with our designated node IP and name so enforcement
-        %% of those attributes can be made for security reasons.
-        {ok, AccPid} = gen_rpc_acceptor_sup:start_child(Peer),
-        %% Link to acceptor, if they die so should we, since we are single-receiver
-        %% to single-acceptor service
-        true = erlang:link(AccPid),
+        %% process with our designated client IP and so enforcement
+        %% of this attribute can be made for security reasons.
+        {ok, AccPid} = gen_rpc_tcp_acceptor_sup:start_child(Peer),
         case gen_rpc_helper:set_sock_opt(ListSock, AccSocket) of
             ok -> ok;
             {error, Reason} -> exit({set_sock_opt, Reason})
         end,
         ok = gen_tcp:controlling_process(AccSocket, AccPid),
         ok = gen_rpc_acceptor:set_socket(AccPid, AccSocket),
-        %% We want the acceptor to drop the connection, so we remain
-        %% open to accepting new connections, otherwise
-        %% passive connections will remain open and leave us prone to
-        %% a DoS file descriptor depletion attack
         case prim_inet:async_accept(ListSock, -1) of
-            {ok, NewRef} ->
-                {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}, hibernate};
-            {error, NewRef} ->
-                {stop, {async_accept,inet:format_error(NewRef)}, State}
+            {ok, NewRef} -> {noreply, State#state{acceptor=NewRef}, hibernate};
+            {error, NewRef} -> exit({async_accept, inet:format_error(NewRef)})
         end
     catch
         exit:ExitReason ->
@@ -124,16 +94,10 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
     end;
 
 %% Handle async socket errors gracefully
-handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=Ref} = State) ->
+handle_info({inet_async, Socket, _Ref, Error}, #state{socket=Socket} = State) ->
     ok = lager:error("message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
-                    [ListSock, Error]),
+                    [Socket, Error]),
     {stop, Error, State};
-
-%% Handle exit messages from our acceptor gracefully
-handle_info({'EXIT', AccPid, Reason}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
-    ok = lager:notice("message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
-                    [Socket, AccPid, Reason]),
-    {stop, Reason, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->
