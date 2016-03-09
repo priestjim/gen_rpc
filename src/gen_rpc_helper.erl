@@ -18,7 +18,13 @@
         host_from_node/1,
         set_sock_opt/2,
         make_process_name/2,
-        extract_node_name/1]).
+        extract_node_name/1,
+        get_tcp_server_port/0,
+        get_connect_timeout/0,
+        get_send_timeout/1,
+        get_receive_timeout/1,
+        get_inactivity_timeout/1,
+        get_async_call_inactivity_timeout/0]).
 
 %%% ===================================================
 %%% Public API
@@ -110,3 +116,47 @@ extract_node_name(PidName) when is_atom(PidName) ->
     %% gen_rpc.client.(node name) which is 15 chars long
     PidStr = atom_to_list(PidName),
     list_to_atom(lists:nthtail(15, PidStr)).
+
+%% Retrieves the default connect timeout
+-spec get_connect_timeout() -> timeout().
+get_connect_timeout() ->
+    {ok, ConnTO} = application:get_env(?APP, connect_timeout),
+    ConnTO.
+
+-spec get_tcp_server_port() -> inet:port_number().
+get_tcp_server_port() ->
+    {ok, Port} = application:get_env(?APP, tcp_server_port),
+    Port.
+
+%% Merges user-defined receive timeout values with app timeout values
+-spec get_receive_timeout(undefined | timeout()) -> timeout().
+get_receive_timeout(undefined) ->
+    {ok, RecvTO} = application:get_env(?APP, receive_timeout),
+    RecvTO;
+
+get_receive_timeout(Else) ->
+    Else.
+
+%% Merges user-defined send timeout values with app timeout values
+-spec get_send_timeout(undefined | timeout()) -> timeout().
+get_send_timeout(undefined) ->
+    {ok, SendTO} = application:get_env(?APP, send_timeout),
+    SendTO;
+get_send_timeout(Else) ->
+    Else.
+
+%% Returns default inactivity timeouts for different modules
+-spec get_inactivity_timeout(gen_rpc_client | gen_rpc_acceptor) -> timeout().
+get_inactivity_timeout(gen_rpc_client) ->
+    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
+    TTL;
+
+get_inactivity_timeout(gen_rpc_acceptor) ->
+    {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
+    TTL.
+
+-spec get_async_call_inactivity_timeout() -> timeout().
+get_async_call_inactivity_timeout() ->
+    {ok, TTL} = application:get_env(?APP, async_call_inactivity_timeout),
+    TTL.
+

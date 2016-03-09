@@ -23,10 +23,7 @@
 -define(TCP_SERVER_RECV_TIMEOUT, 5000).
 
 %%% Local state
--record(state, {socket :: port(),
-        send_timeout :: timeout(),
-        receive_timeout :: timeout(),
-        inactivity_timeout :: timeout()}).
+-record(state, {socket :: port()}).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -45,7 +42,7 @@
         handle_info/2, terminate/2, code_change/3]).
 
 %%% Process exports
--export([call_worker/4, async_call_worker/5]).
+-export([async_call_worker/5]).
 
 %%% ===================================================
 %%% Supervisor functions
@@ -94,13 +91,13 @@ call(Node, M, F, A, RecvTO, SendTO) when is_atom(Node), is_atom(M), is_atom(F), 
                     %% We take care of CALL inside the gen_server
                     %% This is not resilient enough if the caller's mailbox is full
                     %% but it's good enough for now
-                    gen_server:call(NewPid, {{call,M,F,A},RecvTO,SendTO}, infinity);
+                    do_call(NewPid, M, F, A, RecvTO, SendTO);
                 {error, Reason} ->
                     Reason
             end;
         Pid ->
             ok = lager:debug("event=client_process_found pid=\"~p\" server_node=\"~s\"", [Pid, Node]),
-            gen_server:call(Pid, {{call,M,F,A},RecvTO,SendTO}, infinity)
+            do_call(Pid, M, F, A, RecvTO, SendTO)
     end.
 
 %% Simple server cast with no args and default timeout values
@@ -184,7 +181,7 @@ nb_yield(Key)->
 nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Timeout) ->
     Pid ! {self(), Ref, yield},
     receive
-        {Pid, Ref, async_call_reply, Result} ->
+        {Pid, Ref, async_call, Result} ->
             {value,Result}
     after
         Timeout ->
@@ -215,23 +212,17 @@ multicall(Nodes, M, F, A, Timeout) when is_list(Nodes), is_atom(M), is_atom(F), 
 %%% ===================================================
 init({Node}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
-    %% Extract application-specific settings
-    Settings = application:get_all_env(?APP),
-    {connect_timeout, ConnTO} = lists:keyfind(connect_timeout, 1, Settings),
-    {send_timeout, SendTO} = lists:keyfind(send_timeout, 1, Settings),
-    {receive_timeout, RecvTO} = lists:keyfind(receive_timeout, 1, Settings),
-    {client_inactivity_timeout, TTL} = lists:keyfind(client_inactivity_timeout, 1, Settings),
-    {tcp_server_port, SrvPort} = lists:keyfind(tcp_server_port, 1, Settings),
-    ok = lager:info("event=initializing_client node=\"~s\" connect_timeout=~B send_timeout=~B receive_timeout=~B inactivity_timeout=\"~p\"",
-                    [Node, ConnTO, SendTO, RecvTO, TTL]),
-    case connect_to_node(Node, SrvPort) of
+    TTL = gen_rpc_helper:get_inactivity_timeout(?MODULE),
+    ConnTO = gen_rpc_helper:get_connect_timeout(),
+    ok = lager:info("event=initializing_client node=\"~s\" connect_timeout=~B inactivity_timeout=\"~p\"", [Node, ConnTO, TTL]),
+    case connect_to_tcp_server(Node) of
         {ok, IpAddress, Port} ->
             ok = lager:debug("event=remote_server_started_successfully server_node=\"~s\" remote_port=\"~B\"", [Node, Port]),
             case gen_tcp:connect(IpAddress, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("event=connecting_to_server server_node=\"~s\" peer=\"~s\" result=success",
                                      [Node, gen_rpc_helper:peer_to_string({IpAddress, Port})]),
-                    {ok, #state{socket=Socket,send_timeout=SendTO,receive_timeout=RecvTO,inactivity_timeout=TTL}, TTL};
+                    {ok, #state{socket=Socket}, TTL};
                 {error, Reason} ->
                     ok = lager:error("event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
                                      [Node, gen_rpc_helper:peer_to_string({IpAddress, Port}), Reason]),
@@ -242,34 +233,22 @@ init({Node}) ->
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, URecvTO, USendTO}, Caller, #state{socket=Socket} = State) ->
-    {RecvTO, SendTO} = merge_timeout_values(State#state.receive_timeout, URecvTO, State#state.send_timeout, USendTO),
-    Ref = erlang:make_ref(),
-    %% Spawn the worker that will wait for the server's reply
-    WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), Ref, Caller, RecvTO]),
-    %% Let the server know of the responsible process
-    Packet = erlang:term_to_binary({WorkerPid, Ref, PacketTuple}),
-    ok = lager:debug("message=call event=constructing_call_term socket=\"~p\" call_ref=\"~p\"",
-                     [Socket, Ref]),
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
+handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket} = State) ->
+    Packet = erlang:term_to_binary({PacketTuple, Caller}),
+    ok = lager:debug("message=call event=constructing_call_term socket=\"~p\" caller=\"~p\"", [Socket, Caller]),
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(SendTO)}]),
     case gen_tcp:send(Socket, Packet) of
         {error, timeout} ->
-            ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
-                             [Socket, Ref]),
-            %% Reply will be handled from the worker
+            ok = lager:error("message=call event=transmission_failed socket=\"~p\" caller=\"~p\" reason=\"timeout\"", [Socket, Caller]),
             {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
         {error, Reason} ->
-            ok = lager:error("message=call event=transmission_failed socket=\"~p\" call_ref=\"~p\" reason=\"~p\"",
-                             [Socket, Ref, Reason]),
-            %% Reply will be handled from the worker
+            ok = lager:error("message=call event=transmission_failed socket=\"~p\" caller=\"~p\" reason=\"~p\"", [Socket, Caller, Reason]),
             {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
-            ok = lager:debug("message=call event=transmission_succeeded socket=\"~p\" call_ref=\"~p\"",
-                             [Socket, Ref]),
+            ok = lager:debug("message=call event=transmission_succeeded socket=\"~p\" caller=\"~p\"", [Socket, Caller]),
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = inet:setopts(Socket, [{active, once}]),
-            %% Reply will be handled from the worker
-            {noreply, State, State#state.inactivity_timeout}
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Gracefully terminate
@@ -283,13 +262,12 @@ handle_call(Msg, _Caller, State) ->
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% This is the actual CAST handler for CAST
-handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = State) ->
-    {_RecvTO, SendTO} = merge_timeout_values(undefined, undefined, State#state.send_timeout, USendTO),
+handle_cast({{cast,_M,_F,_A} = PacketTuple, SendTO}, #state{socket=Socket} = State) ->
     %% Cast requests do not need a reference
     Packet = erlang:term_to_binary(PacketTuple),
     ok = lager:debug("message=cast event=constructing_cast_term socket=\"~p\"", [Socket]),
     %% Set the send timeout and do not run in active mode - we're a cast!
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(SendTO)}]),
     case gen_tcp:send(Socket, Packet) of
         {error, timeout} ->
             %% Terminate will handle closing the socket
@@ -300,25 +278,23 @@ handle_cast({{cast,_M,_F,_A} = PacketTuple, USendTO}, #state{socket=Socket} = St
             {stop, {badtcp,Reason}, State};
         ok ->
             ok = lager:debug("message=cast event=transmission_succeeded socket=\"~p\"", [Socket]),
-            {noreply, State, State#state.inactivity_timeout}
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% This is the actual ASYNC CALL handler
-handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket,send_timeout=SendTO} = State) ->
-    Packet = erlang:term_to_binary({Caller, Ref, PacketTuple}),
+handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket} = State) ->
+    Packet = erlang:term_to_binary({PacketTuple, {Caller,Ref}}),
     ok = lager:debug("message=call event=constructing_async_call_term socket=\"~p\" worker_pid=\"~p\" async_call_ref=\"~p\"",
                      [Socket, Caller, Ref]),
-    ok = inet:setopts(Socket, [{send_timeout, SendTO}]),
+    ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
     case gen_tcp:send(Socket, Packet) of
         {error, timeout} ->
             ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"timeout\"",
                              [Socket, Caller, Ref]),
-            %% Reply will be handled from the worker
             {stop, {badtcp,send_timeout}, {badtcp,send_timeout}, State};
         {error, Reason} ->
             ok = lager:error("message=async_call event=transmission_failed socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
                              [Socket, Caller, Ref, Reason]),
-            %% Reply will be handled from the worker
             {stop, {badtcp,Reason}, {badtcp,Reason}, State};
         ok ->
             ok = lager:debug("message=async_call event=transmission_succeeded socket=\"~p\" worker_pid=\"~p\" call_ref=\"~p\"",
@@ -326,7 +302,7 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = inet:setopts(Socket, [{active, once}]),
             %% Reply will be handled from the worker
-            {noreply, State, State#state.inactivity_timeout}
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
@@ -337,25 +313,20 @@ handle_cast(Msg, State) ->
 %% Handle any TCP packet coming in
 handle_info({tcp,Socket,Data}, #state{socket=Socket} = State) ->
     _Reply = try erlang:binary_to_term(Data) of
-        {CallReply, {WorkerPid, Ref, Reply}} ->
-            case erlang:is_process_alive(WorkerPid) of
-                true ->
-                    ok = lager:debug("message=tcp event=reply_received call_ref=\"~p\" worker_pid=\"~p\" action=sending_to_worker",
-                                     [Ref, WorkerPid]),
-                    WorkerPid ! {self(), Ref, CallReply, Reply};
-                false ->
-                    ok = lager:notice("message=tcp event=reply_received_with_dead_worker call_ref=\"~p\" worker_pid=\"~p\"",
-                                      [Ref, WorkerPid])
-            end;
+        {call, Caller, Reply} ->
+            ok = lager:debug("message=tcp event=call_reply_received caller=\"~p\" action=sending_reply", [Caller]),
+            gen_server:reply(Caller, Reply);
+        {async_call, {Caller, Ref}, Reply} ->
+            ok = lager:debug("message=tcp event=async_call_reply_received caller=\"~p\" action=sending_reply", [Caller]),
+            Caller ! {self(), Ref, async_call, Reply};
         OtherData ->
-            ok = lager:error("message=tcp event=erroneous_reply_received socket=\"~p\" data=\"~p\" action=ignoring",
-                             [Socket, OtherData])
+            ok = lager:error("message=tcp event=erroneous_reply_received socket=\"~p\" data=\"~p\" action=ignoring", [Socket, OtherData])
     catch
         error:badarg ->
             ok = lager:error("message=tcp event=corrupt_data_received socket=\"~p\" action=ignoring", [Socket])
     end,
     ok = inet:setopts(Socket, [{active, once}]),
-    {noreply, State, State#state.inactivity_timeout};
+    {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
 
 handle_info({tcp_closed, Socket}, #state{socket=Socket} = State) ->
     ok = lager:warning("message=tcp_closed event=tcp_socket_closed socket=\"~p\" action=stopping", [Socket]),
@@ -386,8 +357,9 @@ terminate(_Reason, #state{socket=Socket}) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
-connect_to_node(Node, Port) ->
+connect_to_tcp_server(Node) ->
     Host = gen_rpc_helper:host_from_node(Node),
+    Port = gen_rpc_helper:get_tcp_server_port(),
     case gen_tcp:connect(Host, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ?TCP_SERVER_CONN_TIMEOUT) of
         {ok, Socket} ->
             ok = lager:debug("event=connecting_to_server peer=\"~s\" socket=\"~p\" result=success", [Node, Socket]),
@@ -436,25 +408,16 @@ get_node_port(Socket, IpAddress) ->
             end
     end.
 
-%% This function is a process launched by the gen_server, waiting to receive a
-%% reply from the TCP channel via the gen_server
-call_worker(SrvPid, Ref, Caller, Timeout) when is_tuple(Caller), is_reference(Ref) ->
-    receive
-        {SrvPid,Ref,call_reply,Reply} ->
-            ok = lager:debug("event=reply_received call_ref=\"~p\" reply=\"~p\"", [Ref, Reply]),
-            _Ign = gen_server:reply(Caller, Reply),
-            ok;
-        Else ->
-            ok = lager:error("event=invalid_message_received call_ref=\"~p\" message=\"~p\"", [Ref, Else]),
-            _Ign = gen_server:reply(Caller, {badrpc, invalid_message_received})
-    after
-        Timeout ->
-            ok = lager:notice("event=call_timeout call_ref=\"~p\"", [Ref]),
-            _Ign = gen_server:reply(Caller, {badrpc, timeout})
+do_call(Pid, M, F, A, RecvTO, SendTO) ->
+    try
+        gen_server:call(Pid, {{call,M,F,A}, SendTO}, gen_rpc_helper:get_receive_timeout(RecvTO))
+    catch
+        exit:{timeout,_Reason} ->
+            {badrpc,timeout}
     end.
 
 async_call_worker(Node, M, F, A, Ref) ->
-    {ok, CleanupTimeout} = application:get_env(?APP, async_call_inactivity_timeout),
+    TTL = gen_rpc_helper:get_async_call_inactivity_timeout(),
     PidName = gen_rpc_helper:make_process_name("client", Node),
     SrvPid = case whereis(PidName) of
         undefined ->
@@ -474,40 +437,30 @@ async_call_worker(Node, M, F, A, Ref) ->
     case SrvPid of
         SrvPid when is_pid(SrvPid) ->
             receive
-                %% Wait for the reply from the node's gen_rpc server
-                {SrvPid,Ref,async_call_reply,Reply} ->
+                %% Wait for the reply from the node's gen_rpc client process
+                {SrvPid,Ref,async_call,Reply} ->
                     %% Wait for a yield request from the caller
                     receive
-                        {Caller, Ref, yield} when is_pid(Caller), is_reference(Ref) ->
-                            Caller ! {self(), Ref, async_call_reply, Reply}
+                        {YieldPid,Ref,yield} ->
+                            YieldPid ! {self(), Ref, async_call, Reply}
                     after
-                        CleanupTimeout ->
+                        TTL ->
                             exit({error, async_call_cleanup_timeout_reached})
                     end
             after
-                CleanupTimeout ->
+                TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end;
         TRpcError ->
             %% Wait for a yield request from the caller
             receive
-                {Caller, Ref, yield} when is_pid(Caller), is_reference(Ref) ->
-                    Caller ! {self(), Ref, async_call_reply, TRpcError}
+                {YieldPid,Ref,yield} ->
+                    YieldPid ! {self(), Ref, async_call, TRpcError}
             after
-                CleanupTimeout ->
+                TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end
     end.
-
-%% Merges user-define timeout values with state timeout values
-merge_timeout_values(SRecvTO, undefined, SSendTO, undefined) ->
-    {SRecvTO, SSendTO};
-merge_timeout_values(_SRecvTO, URecvTO, SSendTO, undefined) ->
-    {URecvTO, SSendTO};
-merge_timeout_values(SRecvTO, undefined, _SSendTO, USendTO) ->
-    {SRecvTO, USendTO};
-merge_timeout_values(_SRecvTO, URecvTO, _SSendTO, USendTO) ->
-    {URecvTO, USendTO}.
 
 parse_multicall_results(Keys, Nodes, undefined) ->
     parse_multicall_results(Keys, Nodes, infinity);
