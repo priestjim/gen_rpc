@@ -5,7 +5,7 @@
 %%%
 
 {application, gen_rpc,
-    [{description, "An extremely scalable BERT-RPC implementation for Erlang-VM based languages."},
+    [{description, " A scalable RPC library for Erlang-VM based languages"},
     {vsn, "1.0.0"},
     {mod, {gen_rpc_app, []}},
     {registered, [gen_rpc_dispatcher, gen_rpc_listener]},
