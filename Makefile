@@ -36,11 +36,6 @@
 
 PROJ = $(shell ls -1 src/*.src | sed -e 's/src//' | sed -e 's/\.app\.src//' | tr -d '/')
 
-custom_rules_file = $(wildcard custom.mk)
-ifeq ($(custom_rules_file),custom.mk)
-    include custom.mk
-endif
-
 # =============================================================================
 # verify that the programs we need to run are installed on this system
 # =============================================================================
@@ -69,6 +64,28 @@ PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 
 COVERDATA = $(CURDIR)/_build/test/ct.coverdata
 
+# ======================
+# Integration test logic
+# ======================
+ifneq ($(shell which docker 2> /dev/null),)
+
+ifeq ($(shell which jq 2> /dev/null),)
+	$(error "JQ is required to run integration tests on this system")
+endif
+
+NODES ?= 3
+IMAGE = $(shell docker images -q gen_rpc/integration 2> /dev/null)
+
+image:
+ifeq ($(IMAGE),)
+	@cd test/integration && docker build --rm --pull -t gen_rpc/integration .
+endif
+
+integration: image
+	@export NODES=$(NODES) && cd test/integration && bash -c "./integration-tests.sh $(NODES)"
+
+endif
+
 # =============================================================================
 # Build targets
 # =============================================================================
@@ -80,7 +97,7 @@ test: $(REBAR) epmd
 	@REBAR_PROFILE=test $(REBAR) do ct -c, cover
 
 dialyzer: $(REBAR) $(PLT_FILE)
-	@REBAR_PROFILE=dev $(REBAR) do dialyzer | fgrep -v -f $(CURDIR)/dialyzer.ignore
+	@REBAR_PROFILE=dev $(REBAR) do dialyzer
 
 xref: $(REBAR)
 	@REBAR_PROFILE=dev $(REBAR) do xref
@@ -99,7 +116,7 @@ coveralls: $(COVERDATA)
 # =============================================================================
 
 shell: $(REBAR) epmd
-	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc@127.0.0.1
+	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc@127.0.0.1 --config test/gen_rpc.config
 
 # =============================================================================
 # Misc targets

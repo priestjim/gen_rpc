@@ -5,10 +5,13 @@
 %%%
 
 {application, gen_rpc,
-    [{description, " A scalable RPC library for Erlang-VM based languages"},
+    [{description, "A scalable RPC library for Erlang-VM based languages"},
     {vsn, "1.0.0"},
     {mod, {gen_rpc_app, []}},
     {registered, [gen_rpc_dispatcher, gen_rpc_listener]},
+    {maintainers, ["Panagiotis PJ Papadomitsos"]},
+    {licenses, ["Apache 2.0"]},
+    {links, [{"Github", "https://github.com/priestjim/gen_rpc"}]},
     {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
     {env,[
         %% Default TCP listener port

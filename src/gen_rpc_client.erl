@@ -390,16 +390,16 @@ get_node_port(Socket, IpAddress) ->
                         {connection_rejected, invalid_cookie} ->
                             ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_cookie\"", [Socket]),
                             ok = gen_tcp:close(Socket),
-                            {error, badrpc};
+                            {error, invalid_cookie};
                         _Else ->
                             ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_payload\"", [Socket]),
                             ok = gen_tcp:close(Socket),
-                            {error, badrpc}
+                            {error, invalid_message}
                     catch
                         error:badarg ->
                             ok = gen_tcp:close(Socket),
                             ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"invalid_erlang_term\"", [Socket]),
-                            {error, badrpc}
+                            {error, invalid_payload}
                     end;
                 {error, Reason} ->
                     ok = lager:debug("event=reception_failed socket=\"~p\" reason=\"~p\"", [Socket, Reason]),
