@@ -46,11 +46,32 @@ Getting started with `gen_rpc` is easy. First, add the appropriate dependency li
         {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "master"}}}
     ]}.
 
+Or if you're using `hex.pm`:
+
+    {deps [
+        {gen_rpc, "1.0.0"}
+    ]}.
+
+Or if you're using Elixir/Mix:
+
+    def project do
+      [
+        deps: [
+          {:gen_rpc, "~> 1.0.0"}
+        ]
+      ]
+
 Then, add `gen_rpc` as a dependency application to your `.app.src`/`.app` file:
 
     {application, my_app, [
         {applications, [kernel, stdlib, gen_rpc]}
     ]}
+
+Or your `mix.exs` file:
+
+    def application do
+      applications: [:gen_rpc]
+    end
 
 Finally, start a couple of nodes to test it out:
 
