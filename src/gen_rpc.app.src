@@ -12,6 +12,14 @@
     {maintainers, ["Panagiotis PJ Papadomitsos"]},
     {licenses, ["Apache 2.0"]},
     {links, [{"Github", "https://github.com/priestjim/gen_rpc"}]},
+    {files, [
+        "LICENSE",
+        "README.md",
+        "include",
+        "package.exs",
+        "rebar.config",
+        "src"
+    ]},
     {applications, [kernel, stdlib, lager, crypto, asn1, public_key, ssl]},
     {env,[
         %% Default TCP listener port
