@@ -46,51 +46,51 @@ To build this project you need to have the following:
 Getting started with `gen_rpc` is easy. First, add the appropriate dependency line to your `rebar.config`:
 
 ```erlang
-    {deps, [
-        {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "master"}}}
-    ]}.
+{deps, [
+    {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "master"}}}
+]}.
 ```
 
 Or if you're using `hex.pm`:
 
 ```erlang
-    {deps [
-        {gen_rpc, "1.0.0"}
-    ]}.
+{deps [
+    {gen_rpc, "1.0.0"}
+]}.
 ```
 
 Or if you're using Elixir/Mix:
 
 ```elixir
-    def project do
-      [
-        deps: [
-          {:gen_rpc, "~> 1.0.0"}
-        ]
-      ]
+def project do
+  [
+    deps: [
+      {:gen_rpc, "~> 1.0.0"}
+    ]
+  ]
 ```
 
 Then, add `gen_rpc` as a dependency application to your `.app.src`/`.app` file:
 
 ```erlang
-    {application, my_app, [
-        {applications, [kernel, stdlib, gen_rpc]}
-    ]}
+{application, my_app, [
+    {applications, [kernel, stdlib, gen_rpc]}
+]}
 ```
 
 Or your `mix.exs` file:
 
 ```elixir
-    def application do
-      applications: [:gen_rpc]
-    end
+def application do
+  applications: [:gen_rpc]
+end
 ```
 
 Finally, start a couple of nodes to test it out:
 
 ```erlang
-    (my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
-    'other_node@1.2.3.4'
+(my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
+'other_node@1.2.3.4'
 ```
 
 ## Build Targets
