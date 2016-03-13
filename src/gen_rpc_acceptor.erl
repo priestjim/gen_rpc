@@ -55,7 +55,6 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Peer}) ->
-    _OldVal = process_flag(trap_exit, true),
     ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP and the node in our state
     {ok, waiting_for_socket, #state{peer=Peer}}.
@@ -147,13 +146,7 @@ handle_info(Msg, StateName, State) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
-%% Terminate normally if we haven't received the socket yet
-terminate(_Reason, _StateName, #state{socket=undefined}) ->
-    ok;
-
-%% Terminate by closing the socket
-terminate(_Reason, _StateName, #state{socket=Socket}) ->
-    ok = lager:debug("socket=\"~p\"", [Socket]),
+terminate(_Reason, _StateName, _State) ->
     ok.
 
 %%% ===================================================

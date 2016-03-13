@@ -21,7 +21,9 @@ Enter `erlang:spawn/4` (_remote spawn_ from now on). Remote spawn dynamically sp
 
 Remote spawn was not designed to ship large amounts of data as part of the call's arguments. Hence, if you want to ship a large binary such as a picture or a transaction log (large can also be small if your network is slow) over remote spawn, sooner or later you'll see this message popping up in your logs if you have subscribed to the system monitor through `erlang:system_monitor/2`:
 
-    {monitor,<4685.187.0>,busy_dist_port,#Port<4685.41652>}
+```erlang
+{monitor,<4685.187.0>,busy_dist_port,#Port<4685.41652>}
+```
 
 This message essentially means that the VM's distributed port pair was busy while the VM was trying to use it for some other task like _Distributed Erlang heartbeat beacons_ or _mnesia synchronization_. This of course wrecks havoc in certain timing expectations these subsystems have and the results can be very problematic: the VM might detect a node as disconnected even though everything is perfectly healthy and `mnesia` might misdetect a network partition.
 
@@ -43,41 +45,53 @@ To build this project you need to have the following:
 
 Getting started with `gen_rpc` is easy. First, add the appropriate dependency line to your `rebar.config`:
 
+```erlang
     {deps, [
         {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "master"}}}
     ]}.
+```
 
 Or if you're using `hex.pm`:
 
+```erlang
     {deps [
         {gen_rpc, "1.0.0"}
     ]}.
+```
 
 Or if you're using Elixir/Mix:
 
+```elixir
     def project do
       [
         deps: [
           {:gen_rpc, "~> 1.0.0"}
         ]
       ]
+```
 
 Then, add `gen_rpc` as a dependency application to your `.app.src`/`.app` file:
 
+```erlang
     {application, my_app, [
         {applications, [kernel, stdlib, gen_rpc]}
     ]}
+```
 
 Or your `mix.exs` file:
 
+```elixir
     def application do
       applications: [:gen_rpc]
     end
+```
 
 Finally, start a couple of nodes to test it out:
 
+```erlang
     (my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
     'other_node@1.2.3.4'
+```
 
 ## Build Targets
 
@@ -102,6 +116,20 @@ To build the project and drop in a console while developing, run:
 To clean every build artifact and log, run:
 
     make distclean
+
+## Testing
+
+A full suite of tests has been implemented for `gen_rpc`. You can run the CT-based test suite, dialyzer and xref by:
+
+    make dist
+
+If you have **Docker** available on your system, you can run dynamic integration tests with "physically" separated hosts/nodes
+by running the command:
+
+    make integration
+
+This will launch 3 slave containers and 1 master (change that by `NODES=5 make integration`) and will run the
+`integration_SUITE` CT test suite. The command needs [**jq**](https://stedolan.github.io/jq) in your `${PATH}` environment variable.
 
 ## API
 
