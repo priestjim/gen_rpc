@@ -212,10 +212,8 @@ random_local_tcp_close(_Config) ->
 
 random_remote_tcp_close(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    [{_,ServerPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]),
-    {_, Socket, _, _, _} = rpc:call(?SLAVE, sys, get_state, [ServerPid]),
-    ok = rpc:call(?SLAVE, gen_tcp, close, [Socket]),
-    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
+    [{_,AccPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_client_sup),
     [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),

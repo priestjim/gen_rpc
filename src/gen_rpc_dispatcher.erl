@@ -44,7 +44,6 @@ start_client(Node) when is_atom(Node) ->
 %%% ===================================================
 init([]) ->
     ok = lager:info("event=start"),
-    _OldVal = process_flag(trap_exit, true),
     {ok, undefined}.
 
 %% Simply launch a connection to a node through the appropriate
@@ -83,6 +82,5 @@ handle_info(Msg, undefined) ->
 code_change(_OldVersion, undefined, _Extra) ->
     {ok, undefined}.
 
-terminate(Reason, undefined) ->
-    ok = lager:debug("reason=\"~512tp\"", [Reason]),
+terminate(_Reason, undefined) ->
     ok.

@@ -62,3 +62,14 @@ multicall(_Config) ->
     RespLen = length(RespList),
     PeersLen = AliveLen,
     RespLen = AliveLen + 1.
+
+remote_socket_close(_Config) ->
+    Peers = peers(),
+    ok = lists:foreach(fun(Node) ->
+        [{_,AccPid,_,_}] = rpc:call(Node, supervisor, which_children, [gen_rpc_acceptor_sup]),
+        true = rpc:call(Node, erlang, exit, [AccPid,kill])
+    end, peers()),
+    Alive = gen_rpc:nodes(),
+    ok = lists:foreach(fun(Node) ->
+        false = lists:member(Node, Alive)
+    end, Peers).

@@ -99,23 +99,13 @@ handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
         {ok, AccPid} = gen_rpc_acceptor_sup:start_child(Peer),
         %% Link to acceptor, if they die so should we, since we are single-receiver
         %% to single-acceptor service
-        true = erlang:link(AccPid),
         case gen_rpc_helper:set_sock_opt(ListSock, AccSocket) of
             ok -> ok;
             {error, Reason} -> exit({set_sock_opt, Reason})
         end,
         ok = gen_tcp:controlling_process(AccSocket, AccPid),
         ok = gen_rpc_acceptor:set_socket(AccPid, AccSocket),
-        %% We want the acceptor to drop the connection, so we remain
-        %% open to accepting new connections, otherwise
-        %% passive connections will remain open and leave us prone to
-        %% a DoS file descriptor depletion attack
-        case prim_inet:async_accept(ListSock, -1) of
-            {ok, NewRef} ->
-                {noreply, State#state{acceptor=NewRef,acceptor_pid=AccPid}, hibernate};
-            {error, NewRef} ->
-                {stop, {async_accept,inet:format_error(NewRef)}, State}
-        end
+        {stop, normal, State}
     catch
         exit:ExitReason ->
             ok = lager:error("message=inet_async event=unknown_error socket=\"~p\" error=\"~p\" action=stopping",
@@ -128,12 +118,6 @@ handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=
     ok = lager:error("message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
                     [ListSock, Error]),
     {stop, Error, State};
-
-%% Handle exit messages from our acceptor gracefully
-handle_info({'EXIT', AccPid, Reason}, #state{socket=Socket,acceptor_pid=AccPid} = State) ->
-    ok = lager:notice("message=acceptor_exit socket=\"~p\" acceptor_pid=\"~p\" reason=\"~p\" action=stopping",
-                    [Socket, AccPid, Reason]),
-    {stop, Reason, State};
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, State) ->

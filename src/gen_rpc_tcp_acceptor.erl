@@ -148,10 +148,5 @@ handle_info(Msg, StateName, State) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
-%% Terminate normally if we haven't received the socket yet
-terminate(_Reason, _StateName, #state{socket=undefined}) ->
-    ok;
-%% Terminate by closing the socket
-terminate(_Reason, _StateName, #state{socket=Socket}) ->
-    ok = lager:debug("socket=\"~p\"", [Socket]),
+terminate(_Reason, _StateName, _State) ->
     ok.

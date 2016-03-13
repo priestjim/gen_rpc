@@ -9,9 +9,10 @@
 %%% Default TCP options
 -define(DEFAULT_TCP_OPTS, [binary,
         {packet,4},
+        {exit_on_close,true},
         {nodelay,true}, % Send our requests immediately
         {send_timeout_close,true}, % When the socket times out, close the connection
-        {delay_send,true}, % Scheduler should favor big batch requests
+        {delay_send,false}, % Scheduler should favor timely delivery
         {linger,{true,2}}, % Allow the socket to flush outgoing data for 2" before closing it - useful for casts
         {reuseaddr,true}, % Reuse local port numbers
         {keepalive,true}, % Keep our channel open
@@ -21,6 +22,7 @@
 %%% Default TCP options
 -define(ACCEPTOR_DEFAULT_TCP_OPTS, [binary,
         {packet,4},
+        {exit_on_close,true},
         {active,once}]). % Retrieve data from socket upon request
 
 %%% The TCP options that should be copied from the listener to the acceptor
