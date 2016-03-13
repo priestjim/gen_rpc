@@ -48,6 +48,6 @@ stop_child(Pid) when is_pid(Pid) ->
 %%% Supervisor callbacks
 %%% ===================================================
 init([]) ->
-    {ok, {{simple_one_for_one, 100, 1}, [
+    {ok, {{simple_one_for_one, 1000, 1}, [
         {gen_rpc_tcp_acceptor, {gen_rpc_tcp_acceptor,start_link,[]}, temporary, 5000, worker, [gen_rpc_tcp_acceptor]}
     ]}}.

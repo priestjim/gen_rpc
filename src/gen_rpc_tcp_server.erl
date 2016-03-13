@@ -105,8 +105,7 @@ handle_info(Msg, State) ->
     {stop, {unknown_message, Msg}, State}.
 
 %% Terminate cleanly by closing the listening socket
-terminate(_Reason, #state{socket=Socket}) ->
-    ok = lager:debug("socket=\"~p\"", [Socket]),
+terminate(_Reason, _Socket) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
