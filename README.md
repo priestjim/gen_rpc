@@ -55,7 +55,7 @@ Or if you're using `hex.pm`:
 
 ```erlang
 {deps [
-    {gen_rpc, "1.0.0"}
+    {gen_rpc, "1.0.1"}
 ]}.
 ```
 
