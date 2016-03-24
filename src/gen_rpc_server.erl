@@ -54,7 +54,7 @@ get_port(Pid) when is_pid(Pid) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Peer}) ->
-    _OldVal = process_flag(trap_exit, true),
+    _OldVal = erlang:process_flag(trap_exit, true),
     case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->
             ok = lager:info("event=listener_started_successfully peer=\"~s\"",
@@ -124,9 +124,7 @@ handle_info(Msg, State) ->
     ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
     {stop, {unknown_message, Msg}, State}.
 
-%% Terminate cleanly by closing the listening socket
-terminate(_Reason, #state{socket=Socket}) ->
-    ok = lager:debug("socket=\"~p\"", [Socket]),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

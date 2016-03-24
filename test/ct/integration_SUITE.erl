@@ -67,8 +67,9 @@ remote_socket_close(_Config) ->
     Peers = peers(),
     ok = lists:foreach(fun(Node) ->
         [{_,AccPid,_,_}] = rpc:call(Node, supervisor, which_children, [gen_rpc_acceptor_sup]),
-        true = rpc:call(Node, erlang, exit, [AccPid,kill])
+        true = rpc:call(Node, erlang, exit, [AccPid,normal])
     end, peers()),
+    ok = timer:sleep(100),
     Alive = gen_rpc:nodes(),
     ok = lists:foreach(fun(Node) ->
         false = lists:member(Node, Alive)

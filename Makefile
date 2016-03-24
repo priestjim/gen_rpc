@@ -69,16 +69,12 @@ COVERDATA = $(CURDIR)/_build/test/ct.coverdata
 # ======================
 ifneq ($(shell which docker 2> /dev/null),)
 
-ifeq ($(shell which jq 2> /dev/null),)
-	$(error "JQ is required to run integration tests on this system")
-endif
-
 NODES ?= 3
-IMAGE = $(shell docker images -q gen_rpc/integration 2> /dev/null)
+IMAGE = $(shell docker images -q gen_rpc:integration 2> /dev/null)
 
 image:
 ifeq ($(IMAGE),)
-	@cd test/integration && docker build --rm --pull -t gen_rpc/integration .
+	@cd test/integration && docker build --rm --pull -t gen_rpc:integration .
 endif
 
 integration: image

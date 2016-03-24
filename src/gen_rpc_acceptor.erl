@@ -55,6 +55,7 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Peer}) ->
+    _OldVal = erlang:process_flag(trap_exit, true),
     ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP and the node in our state
     {ok, waiting_for_socket, #state{peer=Peer}}.
@@ -143,11 +144,11 @@ handle_info(Msg, StateName, State) ->
     ok = lager:critical("socket=\"~p\" event=uknown_event action=stopping", [State#state.socket]),
     {stop, {StateName, unknown_message, Msg}, State}.
 
-code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
-
 terminate(_Reason, _StateName, _State) ->
     ok.
+
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
 
 %%% ===================================================
 %%% Private functions

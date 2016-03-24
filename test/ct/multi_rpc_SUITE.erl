@@ -35,14 +35,11 @@ init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
     %% In order to connect to the slave
-    ok = application:set_env(?APP, tcp_server_port, 5370),
-    ok = gen_rpc_test_helper:start_slave(?SLAVE1, 5370),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config.
 
 end_per_testcase(_OtherTest, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE1),
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
+    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
     Config.
 
 %%% ===================================================
@@ -69,40 +66,40 @@ eval_everywhere_mfa_no_node(_Config) ->
 %% tagged msg and its own identity.
 
 eval_everywhere_mfa_one_node(_Config) ->
-    ConnectedNodes = [?SLAVE1],
+    ConnectedNodes = [?SLAVE],
     Msg = Name = 'evalmfa1',
     TestPid = self(),
     ok = terminate_process(Name),
-    Pid = spawn_listener(?SLAVE1, Name, TestPid),
+    Pid = spawn_listener(?SLAVE, Name, TestPid),
     true = register(Name, Pid),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
-    {ok, passed} = wait_for_reply(?SLAVE1),
+    {ok, passed} = wait_for_reply(?SLAVE),
     ok.
 
 eval_everywhere_mfa_multiple_nodes(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     Msg = Name = 'evalmfamulti',
     TestPid = self(),
     ok = terminate_process(Name),
-    Pid = spawn_listener2(?SLAVE1, ?SLAVE1, Name, TestPid, 2),
+    Pid = spawn_listener2(?SLAVE, ?SLAVE, Name, TestPid, 2),
     true = register(Name, Pid),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
-    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE1),
+    {ok, passed} = wait_for_reply(?SLAVE, ?SLAVE),
     ok.
 
 eval_everywhere_mfa_multiple_nodes_timeout(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     Msg = Name = 'evalmfamultito',
     TestPid = self(),
     ok = terminate_process(Name),
-    Pid = spawn_listener2(?SLAVE1, ?SLAVE1, Name, TestPid, 2),
+    Pid = spawn_listener2(?SLAVE, ?SLAVE, Name, TestPid, 2),
     true = register(Name, Pid),
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}], 10),
-    {ok, passed} = wait_for_reply(?SLAVE1, ?SLAVE1),
+    {ok, passed} = wait_for_reply(?SLAVE, ?SLAVE),
     ok.
 
 eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, exit, [fatal]),
     % Nothing blows up on sender side after sending call to nothing
     true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
@@ -110,12 +107,12 @@ eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     true = erlang:is_process_alive(whereis(gen_rpc_client_sup)).
 
 eval_everywhere_mfa_throw_multiple_nodes(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
 eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup']),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
@@ -125,33 +122,33 @@ multicall_local_node(_Config) ->
     false = lists:member(node(), gen_rpc:nodes()).
 
 multicall_multiple_nodes(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     {[{_,_,_}, {_,_,_}], []} = gen_rpc:multicall(ConnectedNodes, os, timestamp, []),
     Nodes = gen_rpc:nodes(),
-    true = lists:member(?SLAVE1, Nodes).
+    true = lists:member(?SLAVE, Nodes).
 
 multicall_multiple_nodes_and_local(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     {[{_,_,_}, {_,_,_}], []} = gen_rpc:multicall(ConnectedNodes, os, timestamp, []),
     {[{_,_,_}, {_,_,_}], []} = gen_rpc:multicall(os, timestamp, []),
     Nodes = gen_rpc:nodes(),
-    true = lists:member(?SLAVE1, Nodes).
+    true = lists:member(?SLAVE, Nodes).
 
 multicall_multiple_nodes_with_timeout(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1],
+    ConnectedNodes = [?SLAVE, ?SLAVE],
     {[{_,_,_}, {_,_,_}], []} = gen_rpc:multicall(ConnectedNodes, os, timestamp, [], 5000),
     Nodes = gen_rpc:nodes(),
-    true = lists:member(?SLAVE1, Nodes),
+    true = lists:member(?SLAVE, Nodes),
     {[], BadNodes} = gen_rpc:multicall(ConnectedNodes, timer, sleep, [500], 100),
-    true = lists:member(?SLAVE1, BadNodes).
+    true = lists:member(?SLAVE, BadNodes).
 
 multicall_multiple_nodes_with_bad_node(_Config) ->
-    ConnectedNodes = [?SLAVE1, ?SLAVE1, ?FAKE_NODE],
+    ConnectedNodes = [?SLAVE, ?SLAVE, ?FAKE_NODE],
     {Results, BadNodes} = gen_rpc:multicall(ConnectedNodes, os, timestamp, [], 10000),
     2 = length(Results),
     [?FAKE_NODE] = BadNodes,
     Nodes = gen_rpc:nodes(),
-    true = lists:member(?SLAVE1, Nodes),
+    true = lists:member(?SLAVE, Nodes),
     false = lists:member(?FAKE_NODE, Nodes).
 
 %%% ===================================================

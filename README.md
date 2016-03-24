@@ -128,8 +128,7 @@ by running the command:
 
     make integration
 
-This will launch 3 slave containers and 1 master (change that by `NODES=5 make integration`) and will run the
-`integration_SUITE` CT test suite. The command needs [**jq**](https://stedolan.github.io/jq) in your `${PATH}` environment variable.
+This will launch 3 slave containers and 1 master (change that by `NODES=5 make integration`) and will run the `integration_SUITE` CT test suite.
 
 ## API
 
@@ -152,6 +151,9 @@ For more information on what the functions below do, run `erl -man rpc`.
 ### Application settings
 
 - `tcp_server_port`: The port in which the TCP listener service listens for incoming client requests.
+
+- `remote_tcp_server_ports`: A proplist with the nodes that run on alternative `tcp_server_port` configuration and the port
+  they have configured `gen_rpc` to listen to. Useful when running multiple nodes on the same system and you get port clashes.
 
 - `connect_timeout`: Default timeout for the initial node-to-node connection in **milliseconds**.
 

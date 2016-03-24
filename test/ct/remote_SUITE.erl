@@ -35,7 +35,6 @@ init_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
     %% In order to connect to the slave
-    ok = application:set_env(?APP, tcp_server_port, 5370),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
     ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config;
@@ -44,7 +43,6 @@ init_per_testcase(server_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
     %% In order to connect to the slave
-    ok = application:set_env(?APP, tcp_server_port, 5370),
     ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     Config;
@@ -53,21 +51,21 @@ init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
     %% In order to connect to the slave
-    ok = application:set_env(?APP, tcp_server_port, 5370),
     ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity),
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
+    Config;
+
+end_per_testcase(server_inactivity_timeout, Config) ->
+    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
     Config.
 
 %%% ===================================================
@@ -214,6 +212,7 @@ random_remote_tcp_close(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     [{_,AccPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
     true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
+    ok = timer:sleep(100),
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_client_sup),
     [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
