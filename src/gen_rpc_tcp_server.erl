@@ -41,6 +41,7 @@ stop() ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({}) ->
+    _OldVal = erlang:process_flag(trap_exit, true),
     {ok, Port} = application:get_env(?APP, tcp_server_port),
     case gen_tcp:listen(Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
         {ok, Socket} ->

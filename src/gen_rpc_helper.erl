@@ -19,7 +19,7 @@
         set_sock_opt/2,
         make_process_name/2,
         extract_node_name/1,
-        get_tcp_server_port/0,
+        get_remote_tcp_server_port/1,
         get_connect_timeout/0,
         get_send_timeout/1,
         get_receive_timeout/1,
@@ -123,10 +123,22 @@ get_connect_timeout() ->
     {ok, ConnTO} = application:get_env(?APP, connect_timeout),
     ConnTO.
 
--spec get_tcp_server_port() -> inet:port_number().
-get_tcp_server_port() ->
-    {ok, Port} = application:get_env(?APP, tcp_server_port),
-    Port.
+%% Retrieves the specific TCP server port
+-spec get_remote_tcp_server_port(atom()) -> inet:port_number().
+get_remote_tcp_server_port(Node) ->
+    case application:get_env(?APP, remote_tcp_server_ports) of
+        {ok, []} ->
+            {ok, Port} = application:get_env(?APP, tcp_server_port),
+            Port;
+        {ok, Ports} ->
+            case lists:keyfind(Node, 1, Ports) of
+                false ->
+                    {ok, Port} = application:get_env(?APP, tcp_server_port),
+                    Port;
+                {Node, Port} ->
+                    Port
+            end
+    end.
 
 %% Merges user-defined receive timeout values with app timeout values
 -spec get_receive_timeout(undefined | timeout()) -> timeout().

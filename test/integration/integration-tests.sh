@@ -10,9 +10,9 @@ NODES=""
 start_node() {
 	export NAME=gen_rpc_${1}
 	echo -n "Starting container ${NAME}: "
-	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc/integration
+	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc:integration
 	sleep 2
-	export IP=$(docker inspect ${NAME} | jq -r ".[0].NetworkSettings.Networks.bridge.IPAddress")
+	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' ${NAME})
 	export NODES="${IP}:${NODES}"
 	docker exec ${NAME} epmd -daemon
 	docker exec -t -i ${NAME} bash -c "echo gen_rpc > ~/.erlang.cookie"
@@ -27,9 +27,9 @@ start_node() {
 start_master() {
 	export NAME=gen_rpc_master
 	echo -n "Starting container ${NAME}: "
-	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc/integration
+	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc:integration
 	sleep 2
-	export IP=$(docker inspect gen_rpc_master | jq -r ".[0].NetworkSettings.Networks.bridge.IPAddress")
+	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' gen_rpc_master)
 	docker exec ${NAME} epmd -daemon
 	docker exec -t -i ${NAME} bash -c "echo gen_rpc > ~/.erlang.cookie"
 	docker exec -t -i ${NAME} bash -c "chmod 600 ~/.erlang.cookie"

@@ -212,17 +212,16 @@ multicall(Nodes, M, F, A, Timeout) when is_list(Nodes), is_atom(M), is_atom(F), 
 %%% ===================================================
 init({Node}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
-    TTL = gen_rpc_helper:get_inactivity_timeout(?MODULE),
-    ConnTO = gen_rpc_helper:get_connect_timeout(),
-    ok = lager:info("event=initializing_client node=\"~s\" connect_timeout=~B inactivity_timeout=\"~p\"", [Node, ConnTO, TTL]),
+    ok = lager:info("event=initializing_client node=\"~s\"", [Node]),
     case connect_to_tcp_server(Node) of
         {ok, IpAddress, Port} ->
             ok = lager:debug("event=remote_server_started_successfully server_node=\"~s\" remote_port=\"~B\"", [Node, Port]),
+            ConnTO = gen_rpc_helper:get_connect_timeout(),
             case gen_tcp:connect(IpAddress, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("event=connecting_to_server server_node=\"~s\" peer=\"~s\" result=success",
                                      [Node, gen_rpc_helper:peer_to_string({IpAddress, Port})]),
-                    {ok, #state{socket=Socket}, TTL};
+                    {ok, #state{socket=Socket}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
                 {error, Reason} ->
                     ok = lager:error("event=connecting_to_server server_node=\"~s\" server_ip=\"~s:~B\" result=failure reason=\"~p\"",
                                      [Node, gen_rpc_helper:peer_to_string({IpAddress, Port}), Reason]),
@@ -350,8 +349,7 @@ handle_info(Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, #state{socket=Socket}) ->
-    ok = lager:debug("socket=\"~p\"", [Socket]),
+terminate(_Reason, _State) ->
     ok.
 
 %%% ===================================================
@@ -359,7 +357,7 @@ terminate(_Reason, #state{socket=Socket}) ->
 %%% ===================================================
 connect_to_tcp_server(Node) ->
     Host = gen_rpc_helper:host_from_node(Node),
-    Port = gen_rpc_helper:get_tcp_server_port(),
+    Port = gen_rpc_helper:get_remote_tcp_server_port(Node),
     case gen_tcp:connect(Host, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ?TCP_SERVER_CONN_TIMEOUT) of
         {ok, Socket} ->
             ok = lager:debug("event=connecting_to_server peer=\"~s\" socket=\"~p\" result=success", [Node, Socket]),

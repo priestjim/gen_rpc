@@ -51,8 +51,6 @@ init_per_testcase(async_call_inexistent_node, Config) ->
 init_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = application:set_env(?APP, tcp_server_port, 5370),
     ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config;
 
@@ -69,8 +67,6 @@ end_per_testcase(server_inactivity_timeout, Config) ->
 
 end_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
-    ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
@@ -250,14 +246,13 @@ server_inactivity_timeout(_Config) ->
 
 random_tcp_close(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
-    ClientName = gen_rpc_helper:make_process_name("client", ?NODE),
-    {_,Socket} = sys:get_state(ClientName),
-    ok = gen_tcp:close(Socket),
+    [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
+    true = erlang:exit(AccPid, normal),
     ok = timer:sleep(100), % Give some time to the supervisor to kill the children
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_server_sup),
-    [] = supervisor:which_children(gen_rpc_client_sup),
-    [] = supervisor:which_children(gen_rpc_acceptor_sup).
+    [] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [] = supervisor:which_children(gen_rpc_client_sup).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
