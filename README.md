@@ -155,6 +155,11 @@ For more information on what the functions below do, run `erl -man rpc`.
 - `remote_tcp_server_ports`: A proplist with the nodes that run on alternative `tcp_server_port` configuration and the port
   they have configured `gen_rpc` to listen to. Useful when running multiple nodes on the same system and you get port clashes.
 
+- `rpc_module_control`: Set it to `blacklist` to define a list of modules that will not be exposed to `gen_rpc` or to `whitelist`
+  to define the list of modules that will be exposed to `gen_rpc`. Set it to `undefined` to disable this feature.
+
+- `rpc_module_list`: The list of modules that are going to be blacklisted or whitelisted.
+
 - `connect_timeout`: Default timeout for the initial node-to-node connection in **milliseconds**.
 
 - `send_timeout`: Default timeout for the transmission of a request (`call`/`cast` etc.) from the local node to the remote node in **milliseconds**.

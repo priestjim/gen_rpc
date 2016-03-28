@@ -6,7 +6,7 @@
 
 {application, gen_rpc,
     [{description, "A scalable RPC library for Erlang-VM based languages"},
-    {vsn, "1.0.1"},
+    {vsn, git},
     {mod, {gen_rpc_app, []}},
     {registered, [gen_rpc_dispatcher, gen_rpc_listener]},
     {maintainers, ["Panagiotis PJ Papadomitsos"]},
@@ -26,6 +26,13 @@
         {tcp_server_port, 5369},
         %% Proplist of nodes that listen to a different port
         {remote_tcp_server_ports, []},
+        %% List of modules available for RPC
+        %% This is either whitelist, blacklist or undefined
+        %% to disable the feature
+        {rpc_module_control, undefined},
+        %% This is the list of modules that the
+        %% rule above applies to
+        {rpc_module_list, []},
         %% Client connect timeout
         {connect_timeout, 5000},
         %% Client and Server send timeout

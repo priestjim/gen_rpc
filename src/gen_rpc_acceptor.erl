@@ -17,7 +17,9 @@
 
 %%% Local state
 -record(state, {socket = undefined :: port() | undefined,
-        peer :: {inet:ip4_address(), inet:port_number()}}).
+        peer :: {inet:ip4_address(), inet:port_number()},
+        control :: whitelist | blacklist | undefined,
+        list :: sets:set() | undefined}).
 
 %%% Server functions
 -export([start_link/1, set_socket/2, stop/1]).
@@ -55,10 +57,17 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Peer}) ->
+    {Control, ControlList} = case application:get_env(?APP, rpc_module_control) of
+        {ok, undefined} ->
+            {undefined, undefined};
+        {ok, Type} when Type =:= whitelist; Type =:= blacklist ->
+            {ok, List} = application:get_env(?APP, rpc_module_list),
+            {Type, sets:from_list(List)}
+    end,
     _OldVal = erlang:process_flag(trap_exit, true),
     ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP and the node in our state
-    {ok, waiting_for_socket, #state{peer=Peer}}.
+    {ok, waiting_for_socket, #state{peer=Peer,control=Control,list=ControlList}}.
 
 waiting_for_socket({socket_ready, Socket}, #state{peer=Peer} = State) ->
     % Now we own the socket
@@ -68,23 +77,36 @@ waiting_for_socket({socket_ready, Socket}, #state{peer=Peer} = State) ->
                       gen_rpc_helper:default_tcp_opts(?ACCEPTOR_DEFAULT_TCP_OPTS)]),
     {next_state, waiting_for_data, State#state{socket=Socket}}.
 
-%% Notification event coming from client
-waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer} = State) ->
+waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,control=Control,list=List} = State) ->
     %% The meat of the whole project: process a function call and return
     %% the data
     try erlang:binary_to_term(Data) of
         {{CallType,M,F,A}, Caller} when CallType =:= call; CallType =:= async_call ->
-            WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), CallType, M, F, A, Caller]),
-            ok = lager:debug("event=call_received socket=\"~p\" peer=\"~s\" caller=\"~p\" worker_pid=\"~p\"",
-                             [Socket, gen_rpc_helper:peer_to_string(Peer), Caller, WorkerPid]),
-            ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            case is_allowed(M, Control, List) of
+                true ->
+                    WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), CallType, M, F, A, Caller]),
+                    ok = lager:debug("event=call_received socket=\"~p\" peer=\"~s\" caller=\"~p\" worker_pid=\"~p\"",
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer), Caller, WorkerPid]),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                false ->
+                    ok = lager:debug("event=request_not_allowed socket=\"~p\" control=~s method=~s module=\"~s\"", [Socket,Control,CallType,M]),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    handle_info({CallType, Caller, {badrpc,unauthorized}}, waiting_for_data, State)
+            end;
         {cast, M, F, A} ->
-            ok = lager:debug("event=cast_received socket=\"~p\" peer=\"~s\" module=~s function=~s args=\"~p\"",
-                             [Socket, Peer, M, F, A]),
-            _Pid = erlang:spawn(M, F, A),
-            ok = inet:setopts(Socket, [{active, once}]),
-            {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            case is_allowed(M, Control, List) of
+                true ->
+                    ok = lager:debug("event=cast_received socket=\"~p\" peer=\"~s\" module=~s function=~s args=\"~p\"",
+                                     [Socket, Peer, M, F, A]),
+                    _Pid = erlang:spawn(M, F, A),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                false ->
+                    ok = lager:debug("event=request_not_allowed socket=\"~p\" control=~s method=cast module=\"~s\"", [Socket,Control,M]),
+                    ok = inet:setopts(Socket, [{active, once}]),
+                    {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
+            end;
         OtherData ->
             ok = lager:debug("event=erroneous_data_received socket=\"~p\" peer=\"~s\" data=\"~p\"",
                              [Socket, gen_rpc_helper:peer_to_string(Peer), OtherData]),
@@ -93,6 +115,7 @@ waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer} = State) ->
         error:badarg ->
             {stop, {badtcp, corrupt_data}, State}
     end;
+
 %% Handle the inactivity timeout gracefully
 waiting_for_data(timeout, State) ->
     ok = lager:info("message=timeout event=server_inactivity_timeout socket=\"~p\" action=stopping", [State#state.socket]),
@@ -168,3 +191,12 @@ call_worker(Server, CallType, M, F, A, Caller) ->
                error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
           end,
     Server ! {CallType, Caller, Ret}.
+
+is_allowed(_Module, undefined, _List) ->
+    true;
+
+is_allowed(Module, whitelist, List) when is_atom(Module) ->
+    sets:is_element(Module, List);
+
+is_allowed(Module, blacklist, List) when is_atom(Module) ->
+    not sets:is_element(Module, List).

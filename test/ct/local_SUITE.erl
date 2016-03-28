@@ -54,6 +54,20 @@ init_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
     Config;
 
+init_per_testcase(rpc_module_whitelist, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    ok = application:set_env(?APP, rpc_module_list, [erlang, os]),
+    ok = application:set_env(?APP, rpc_module_control, whitelist),
+    Config;
+
+init_per_testcase(rpc_module_blacklist, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    ok = application:set_env(?APP, rpc_module_list, [erlang, os]),
+    ok = application:set_env(?APP, rpc_module_control, blacklist),
+    Config;
+
 init_per_testcase(_OtherTest, Config) ->
     Config.
 
@@ -67,6 +81,16 @@ end_per_testcase(server_inactivity_timeout, Config) ->
 
 end_per_testcase(remote_node_call, Config) ->
     ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    Config;
+
+end_per_testcase(rpc_module_whitelist, Config) ->
+    ok = application:set_env(?APP, rpc_module_list, []),
+    ok = application:set_env(?APP, rpc_module_control, undefined),
+    Config;
+
+end_per_testcase(rpc_module_blacklist, Config) ->
+    ok = application:set_env(?APP, rpc_module_list, []),
+    ok = application:set_env(?APP, rpc_module_control, undefined),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
@@ -146,7 +170,7 @@ async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?NODE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     NbYieldKey0 = gen_rpc:async_call(?NODE, os, timestamp, []),
-    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 10),
+    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 100),
     YieldKey = gen_rpc:async_call(?NODE, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?NODE, io_lib, print, [nb_yield_key]),
@@ -170,7 +194,7 @@ async_call_yield_reentrant(_Config) ->
     NbYieldKey0 = gen_rpc:async_call(?NODE, os, timestamp, []),
     {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 100),
     % Verify not able to reuse Key again. Key is one time use.
-    timeout = gen_rpc:nb_yield(NbYieldKey0, 10),
+    timeout = gen_rpc:nb_yield(NbYieldKey0, 5),
     YieldKey = gen_rpc:async_call(?NODE, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?NODE, io_lib, print, [nb_yield_key]),
@@ -253,6 +277,16 @@ random_tcp_close(_Config) ->
     [] = supervisor:which_children(gen_rpc_server_sup),
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     [] = supervisor:which_children(gen_rpc_client_sup).
+
+rpc_module_whitelist(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?NODE, os, timestamp),
+    ?NODE = gen_rpc:call(?NODE, erlang, node),
+    {badrpc,unauthorized} = gen_rpc:call(?NODE, application, which_applications).
+
+rpc_module_blacklist(_Config) ->
+    {badrpc, unauthorized} = gen_rpc:call(?NODE, os, timestamp),
+    {badrpc, unauthorized} = gen_rpc:call(?NODE, erlang, node),
+    60000 = gen_rpc:call(?NODE, timer, seconds, [60]).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases
