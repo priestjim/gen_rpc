@@ -210,8 +210,6 @@ An inactivity timeout has been implemented inside the `client` and `server` proc
 
 - When shipping an anonymous function over to another node, it will fail to execute because of the way Erlang implements anonymous functions (Erlang serializes the function metadata but not the function body). This issue also exists in both `rpc` and remote spawn.
 
-- `gen_rpc` requires a statically (but configurable) allocated TCP port. This makes it impossible to run multiple Erlang nodes that use `gen_rpc` on the same server.
-
 ## Licensing
 
 This project is published and distributed under the [Apache License](LICENSE).
