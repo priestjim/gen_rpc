@@ -22,7 +22,8 @@
         get_remote_tcp_server_port/1,
         get_connect_timeout/0,
         get_send_timeout/1,
-        get_receive_timeout/1,
+        get_call_receive_timeout/1,
+        get_sbcast_receive_timeout/0,
         get_inactivity_timeout/1,
         get_async_call_inactivity_timeout/0]).
 
@@ -141,12 +142,12 @@ get_remote_tcp_server_port(Node) ->
     end.
 
 %% Merges user-defined receive timeout values with app timeout values
--spec get_receive_timeout(undefined | timeout()) -> timeout().
-get_receive_timeout(undefined) ->
-    {ok, RecvTO} = application:get_env(?APP, receive_timeout),
+-spec get_call_receive_timeout(undefined | timeout()) -> timeout().
+get_call_receive_timeout(undefined) ->
+    {ok, RecvTO} = application:get_env(?APP, call_receive_timeout),
     RecvTO;
 
-get_receive_timeout(Else) ->
+get_call_receive_timeout(Else) ->
     Else.
 
 %% Merges user-defined send timeout values with app timeout values
@@ -171,4 +172,9 @@ get_inactivity_timeout(gen_rpc_acceptor) ->
 get_async_call_inactivity_timeout() ->
     {ok, TTL} = application:get_env(?APP, async_call_inactivity_timeout),
     TTL.
+
+-spec get_sbcast_receive_timeout() -> timeout().
+get_sbcast_receive_timeout() ->
+    {ok, RecvTO} = application:get_env(?APP, sbcast_receive_timeout),
+    RecvTO.
 

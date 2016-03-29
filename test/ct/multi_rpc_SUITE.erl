@@ -21,7 +21,7 @@ all() ->
 
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
-    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?NODE),
+    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
     %% Setup application logging
     ok = gen_rpc_test_helper:set_application_environment(),
     %% Starting the application locally
@@ -30,6 +30,14 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     ok.
+
+init_per_testcase(sbcast_with_bad_server, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:set_application_environment(),
+    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    %% Set a low sbcast timeout
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, sbcast_receive_timeout, 500]),
+    Config;
 
 init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
@@ -72,7 +80,7 @@ eval_everywhere_mfa_one_node(_Config) ->
     ok = terminate_process(Name),
     Pid = spawn_listener(?SLAVE, Name, TestPid),
     true = register(Name, Pid),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?MASTER, Name, Msg}]),
     {ok, passed} = wait_for_reply(?SLAVE),
     ok.
 
@@ -83,7 +91,7 @@ eval_everywhere_mfa_multiple_nodes(_Config) ->
     ok = terminate_process(Name),
     Pid = spawn_listener2(?SLAVE, ?SLAVE, Name, TestPid, 2),
     true = register(Name, Pid),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}]),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?MASTER, Name, Msg}]),
     {ok, passed} = wait_for_reply(?SLAVE, ?SLAVE),
     ok.
 
@@ -94,7 +102,7 @@ eval_everywhere_mfa_multiple_nodes_timeout(_Config) ->
     ok = terminate_process(Name),
     Pid = spawn_listener2(?SLAVE, ?SLAVE, Name, TestPid, 2),
     true = register(Name, Pid),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?NODE, Name, Msg}], 10),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?MASTER, Name, Msg}], 10),
     {ok, passed} = wait_for_reply(?SLAVE, ?SLAVE),
     ok.
 
@@ -150,6 +158,66 @@ multicall_multiple_nodes_with_bad_node(_Config) ->
     Nodes = gen_rpc:nodes(),
     true = lists:member(?SLAVE, Nodes),
     false = lists:member(?FAKE_NODE, Nodes).
+
+abcast(_Config) ->
+    true = erlang:register(test_process_123, self()),
+    abcast = rpc:call(?SLAVE, gen_rpc, abcast, [[?MASTER], test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    [?MASTER] = rpc:call(?SLAVE, gen_rpc, nodes, []),
+    abcast = rpc:call(?SLAVE, gen_rpc, abcast, [test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    true = erlang:unregister(test_process_123).
+
+abcast_with_bad_server(_Config) ->
+    true = erlang:register(test_process_123, self()),
+    abcast = rpc:call(?SLAVE, gen_rpc, abcast, [[?MASTER, ?FAKE_NODE], test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    true = erlang:unregister(test_process_123).
+
+sbcast(_Config) ->
+    true = erlang:register(test_process_123, self()),
+    {[?MASTER], []} = rpc:call(?SLAVE, gen_rpc, sbcast, [[?MASTER], test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    [?MASTER] = rpc:call(?SLAVE, gen_rpc, nodes, []),
+    {[?MASTER], [?SLAVE]} = rpc:call(?SLAVE, gen_rpc, sbcast, [test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    true = erlang:unregister(test_process_123).
+
+sbcast_with_bad_server(_Config) ->
+    true = erlang:register(test_process_123, self()),
+    {[?MASTER], [?FAKE_NODE]} = rpc:call(?SLAVE, gen_rpc, sbcast, [[?MASTER, ?FAKE_NODE], test_process_123, this_is_a_test]),
+    receive
+        this_is_a_test -> ok;
+        _ -> erlang:error(invalid_message)
+    after
+        2000 -> erlang:error(timeout)
+    end,
+    true = erlang:unregister(test_process_123).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases

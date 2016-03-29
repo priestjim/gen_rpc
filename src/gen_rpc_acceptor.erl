@@ -98,7 +98,7 @@ waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,control=Control,li
             case is_allowed(M, Control, List) of
                 true ->
                     ok = lager:debug("event=cast_received socket=\"~p\" peer=\"~s\" module=~s function=~s args=\"~p\"",
-                                     [Socket, Peer, M, F, A]),
+                                     [Socket, gen_rpc_helper:peer_to_string(Peer), M, F, A]),
                     _Pid = erlang:spawn(M, F, A),
                     ok = inet:setopts(Socket, [{active, once}]),
                     {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
@@ -107,6 +107,21 @@ waiting_for_data({data, Data}, #state{socket=Socket,peer=Peer,control=Control,li
                     ok = inet:setopts(Socket, [{active, once}]),
                     {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
             end;
+        {abcast, Name, Msg} ->
+            ok = lager:debug("event=abcast_received socket=\"~p\" peer=\"~s\" process=~s message=\"~p\"",
+                             [Socket, gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
+            Msg = erlang:send(Name, Msg),
+            ok = inet:setopts(Socket, [{active, once}]),
+            {next_state, waiting_for_data, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+        {sbcast, Name, Msg, Caller} ->
+            ok = lager:debug("event=sbcast_received socket=\"~p\" peer=\"~s\" process=~s message=\"~p\"",
+                             [Socket, gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
+            Reply = case erlang:whereis(Name) of
+                undefined -> error;
+                Pid -> Pid ! Msg, success
+            end,
+            ok = inet:setopts(Socket, [{active, once}]),
+            handle_info({sbcast, Caller, Reply}, waiting_for_data, State);
         OtherData ->
             ok = lager:debug("event=erroneous_data_received socket=\"~p\" peer=\"~s\" data=\"~p\"",
                              [Socket, gen_rpc_helper:peer_to_string(Peer), OtherData]),
@@ -140,9 +155,10 @@ handle_info({tcp, Socket, Data}, waiting_for_data, #state{socket=Socket} = State
 
 %% Handle a call worker message
 handle_info({CallReply, _Caller, _Reply} = Payload, waiting_for_data, #state{socket=Socket} = State) when Socket =/= undefined, CallReply =:= call;
-                                                                                                          Socket =/= undefined, CallReply =:= async_call ->
+                                                                                                          Socket =/= undefined, CallReply =:= async_call;
+                                                                                                          Socket =/= undefined, CallReply =:= sbcast ->
     Packet = erlang:term_to_binary(Payload),
-    ok = lager:debug("message=call_reply event=call_reply_received socket=\"~p\"", [Socket]),
+    ok = lager:debug("message=call_reply event=call_reply_received socket=\"~p\" type=~s", [Socket, CallReply]),
     case gen_tcp:send(Socket, Packet) of
         ok ->
             ok = lager:debug("message=call_reply event=call_reply_sent socket=\"~p\"", [Socket]),

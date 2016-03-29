@@ -10,15 +10,16 @@
 -include_lib("gen_rpc/include/app.hrl").
 
 %%% Node definitions
--define(NODE, 'gen_rpc_master@127.0.0.1').
+-define(MASTER, 'gen_rpc_master@127.0.0.1').
 -define(SLAVE, 'gen_rpc_slave@127.0.0.1').
-
 -define(FAKE_NODE, 'fake_node@1.2.3.4').
+
 -define(TEST_APPLICATION_ENV, [{sasl, errlog_type, error},
         {sasl, error_logger_mf_dir, false},
         {gen_rpc, connect_timeout, 500},
         {gen_rpc, send_timeout, 500},
         {gen_rpc, remote_tcp_server_ports, [
+            {?MASTER, 5369},
             {?SLAVE, 5370}
         ]},
         {lager, colored, true},
