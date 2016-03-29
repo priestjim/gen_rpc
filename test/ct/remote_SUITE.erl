@@ -21,7 +21,7 @@ all() ->
 
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
-    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?NODE),
+    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
     %% Setup application logging
     ok = gen_rpc_test_helper:set_application_environment(),
     %% Starting the application locally

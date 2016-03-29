@@ -38,7 +38,9 @@
         %% Client and Server send timeout
         {send_timeout, 5000},
         %% Default receive timeout for call() functions
-        {receive_timeout, 15000},
+        {call_receive_timeout, 15000},
+        %% Default receive timeout for sbcast
+        {sbcast_receive_timeout, 15000},
         %% Inactivity timeout for client gen_server
         {client_inactivity_timeout, infinity},
         %% Inactivity timeout for server gen_server

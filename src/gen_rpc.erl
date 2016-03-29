@@ -22,6 +22,12 @@
 %% Parallel sync call
 -export([multicall/3, multicall/4, multicall/5]).
 
+%% Asynchronous broadcast
+-export([abcast/2, abcast/3]).
+
+%% Synchronous broadcast
+-export([sbcast/2, sbcast/3]).
+
 %% Misc functions
 -export([nodes/0]).
 
@@ -101,6 +107,22 @@ multicall(NodesOrModule, MorF, ForA, AorTimeout) ->
 -spec multicall(list(), module(), atom(), list(), timeout()) -> {list(), list()}.
 multicall(Nodes, M, F, A, Timeout) ->
     gen_rpc_client:multicall(Nodes, M, F, A, Timeout).
+
+-spec abcast(atom(), term()) -> abcast.
+abcast(Name, Msg) when is_atom(Name) ->
+    gen_rpc_client:abcast(Name, Msg).
+
+-spec abcast(list(), atom(), term()) -> abcast.
+abcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
+    gen_rpc_client:abcast(Nodes, Name, Msg).
+
+-spec sbcast(atom(), term()) -> {list(), list()}.
+sbcast(Name, Msg) when is_atom(Name) ->
+    gen_rpc_client:sbcast(Name, Msg).
+
+-spec sbcast(list(), atom(), term()) -> {list(), list()}.
+sbcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
+    gen_rpc_client:sbcast(Nodes, Name, Msg).
 
 -spec nodes() -> list().
 nodes() ->

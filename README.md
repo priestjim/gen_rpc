@@ -55,7 +55,7 @@ Or if you're using `hex.pm`:
 
 ```erlang
 {deps [
-    {gen_rpc, "1.0.1"}
+    {gen_rpc, "1.0.2"}
 ]}.
 ```
 
@@ -146,6 +146,10 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `multicall(Module, Function, Args)`, `multicall(Nodes, Module, Function, Args)`, `multicall(Module, Function, Args, Timeout)` and `multicall(Nodes, Module, Function, Args, Timeout)`: Multi-node version of the `call` function.
 
+- `abcast(Nodes, Name, Msg)` and `abcast(Name, Msg)`: An asynchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `Nodes`.
+
+- `sbcast(Nodes, Name, Msg)` and `sbcast(Name, Msg)`: A synchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `Nodes`. Returns the nodes in which the named process is alive and the nodes in which it isn't.
+
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(Nodes, Module, Function, Args)`: Multi-node version of the `cast` function.
 
 ### Application settings
@@ -164,7 +168,9 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `send_timeout`: Default timeout for the transmission of a request (`call`/`cast` etc.) from the local node to the remote node in **milliseconds**.
 
-- `receive_timeout`: Default timeout for the reception of a response in a `call` in **milliseconds**.
+- `call_receive_timeout`: Default timeout for the reception of a response in a `call` in **milliseconds**.
+
+- `sbcast_receive_timeout`: Default timeout for the reception of a response in an `sbcast` in **milliseconds**.
 
 - `client_inactivity_timeout`: Inactivity period in **milliseconds** after which a client connection to a node will be closed (and hence have the TCP file descriptor freed).
 
@@ -209,8 +215,6 @@ An inactivity timeout has been implemented inside the `client` and `server` proc
 ## Known Issues
 
 - When shipping an anonymous function over to another node, it will fail to execute because of the way Erlang implements anonymous functions (Erlang serializes the function metadata but not the function body). This issue also exists in both `rpc` and remote spawn.
-
-- `gen_rpc` requires a statically (but configurable) allocated TCP port. This makes it impossible to run multiple Erlang nodes that use `gen_rpc` on the same server.
 
 ## Licensing
 
