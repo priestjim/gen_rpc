@@ -48,6 +48,9 @@ call(_Config) ->
     ok = lists:foreach(fun(Node) ->
         {_,_,_} = gen_rpc:call(Node, os, timestamp, [])
     end, peers()),
+    ok = lists:foreach(fun(Node) ->
+        Node = gen_rpc:call(Node, erlang, node, [])
+    end, peers()),
     Alive = gen_rpc:nodes(),
     ok = lists:foreach(fun(Node) ->
         true = lists:member(Node, Alive)

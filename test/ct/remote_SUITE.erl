@@ -134,6 +134,9 @@ cast_mfa_throw(_Config) ->
 cast_inexistent_node(_Config) ->
     true = gen_rpc:cast(?FAKE_NODE, os, timestamp, [], 1000).
 
+call_node(_Config) ->
+    ?SLAVE = gen_rpc:call(?SLAVE, erlang, node, []).
+
 async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
