@@ -137,6 +137,9 @@ call_with_receive_timeout(_Config) ->
     {badrpc, timeout} = gen_rpc:call(?MASTER, timer, sleep, [500], 1),
     ok = timer:sleep(500).
 
+call_with_worker_kill(_Config) ->
+    {badrpc, killed} = gen_rpc:call(?MASTER, timer, kill_after, [0]).
+
 interleaved_call(_Config) ->
     %% Spawn 3 consecutive processes that execute gen_rpc:call
     %% to the remote node and wait an inversely proportionate time

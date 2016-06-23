@@ -1,5 +1,5 @@
 # Dockerfile to test gen_rpc via proper distributed nodes
-FROM ubuntu:trusty
+FROM ubuntu:xenial
 MAINTAINER Panagiotis PJ Papadomitsos <pj@ezgr.net>
 VOLUME "/gen_rpc"
 WORKDIR "/gen_rpc"
