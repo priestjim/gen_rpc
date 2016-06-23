@@ -21,6 +21,10 @@
         control :: whitelist | blacklist | undefined,
         list :: sets:set() | undefined}).
 
+%%% Ignore dialyzer warning for call_middleman
+%%% The non-local return is deliberate
+-dialyzer([{no_return, [call_middleman/3]}]).
+
 %%% Server functions
 -export([start_link/1, set_socket/2, stop/1]).
 
@@ -32,7 +36,7 @@
 -export([waiting_for_socket/2, waiting_for_data/2]).
 
 %%% Process exports
--export([call_worker/6]).
+-export([call_worker/6, call_middleman/3]).
 
 %%% ===================================================
 %%% Supervisor functions
@@ -200,13 +204,24 @@ call_worker(Server, CallType, M, F, A, Caller) ->
     % and manifest as timeout. Wrap inside anonymous function with catch
     % will crash the worker quickly not manifest as a timeout.
     % See call_MFA_undef test.
-    Ret = try erlang:apply(M, F, A)
+    {MPid, MRef} = erlang:spawn_monitor(?MODULE, call_middleman, [M,F,A]),
+    receive
+        {'DOWN', MRef, process, MPid, {call_middleman_result, Res}} ->
+            Server ! {CallType, Caller, Res};
+        {'DOWN', MRef, process, MPid, AbnormalExit} ->
+            Server ! {CallType, Caller, {badrpc, AbnormalExit}}
+    end.
+
+call_middleman(M, F, A) ->
+    Res = try
+            erlang:apply(M, F, A)
           catch
                throw:Term -> Term;
                exit:Reason -> {badrpc, {'EXIT', Reason}};
                error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
           end,
-    Server ! {CallType, Caller, Ret}.
+    erlang:exit({call_middleman_result, Res}),
+    ok.
 
 is_allowed(_Module, undefined, _List) ->
     true;

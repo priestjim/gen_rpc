@@ -137,6 +137,9 @@ cast_inexistent_node(_Config) ->
 call_node(_Config) ->
     ?SLAVE = gen_rpc:call(?SLAVE, erlang, node, []).
 
+call_with_worker_kill(_Config) ->
+    {badrpc, killed} = gen_rpc:call(?SLAVE, timer, kill_after, [0]).
+
 async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
