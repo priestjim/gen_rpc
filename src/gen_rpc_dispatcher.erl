@@ -33,7 +33,7 @@ start_link() ->
 
 -spec stop() -> ok.
 stop() ->
-    gen_server:call(?MODULE, stop, infinity).
+    gen_server:stop(?MODULE, normal, infinity).
 
 -spec start_client(node()) -> {ok, pid()} | {error, any()}.
 start_client(Node) when is_atom(Node) ->
@@ -59,10 +59,6 @@ handle_call({start_client, Node}, _Caller, undefined) ->
             {ok, Pid}
     end,
     {reply, Reply, undefined};
-
-%% Gracefully terminate
-handle_call(stop, _Caller, undefined) ->
-    {stop, normal, ok, undefined};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, undefined) ->

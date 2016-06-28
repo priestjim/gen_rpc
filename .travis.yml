@@ -1,10 +1,10 @@
 sudo: false
 language: erlang
 otp_release:
-  - "18.2.1"
+  - "19.0"
 cache:
   directories:
-  - $HOME/otp/18.2.1
+  - $HOME/otp/19.0
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
