@@ -52,11 +52,12 @@
 -spec start_link(node()) -> gen_server:startlink_ret().
 start_link(Node) when is_atom(Node) ->
     PidName = gen_rpc_helper:make_process_name("client", Node),
-    gen_server:start_link({local,PidName}, ?MODULE, {Node}, [{spawn_opt, [{priority, high}]}]).
+    gen_server:start_link({local,PidName}, ?MODULE, {Node}, []).
 
 -spec stop(node()) -> ok.
 stop(Node) when is_atom(Node) ->
-    gen_server:call(Node, stop).
+    PidName = gen_rpc_helper:make_process_name("client", Node),
+    gen_server:stop(PidName, normal, infinity).
 
 %%% ===================================================
 %%% Server functions
@@ -218,13 +219,13 @@ sbcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Node}) ->
-    _OldVal = erlang:process_flag(trap_exit, true),
+    ok = gen_rpc_helper:set_optimal_process_flags(),
     ok = lager:info("event=initializing_client node=\"~s\"", [Node]),
     case connect_to_tcp_server(Node) of
         {ok, IpAddress, Port} ->
             ok = lager:debug("event=remote_server_started_successfully server_node=\"~s\" remote_port=\"~B\"", [Node, Port]),
             ConnTO = gen_rpc_helper:get_connect_timeout(),
-            case gen_tcp:connect(IpAddress, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ConnTO) of
+            case gen_tcp:connect(IpAddress, Port, ?DEFAULT_TCP_OPTS, ConnTO) of
                 {ok, Socket} ->
                     ok = lager:debug("event=connecting_to_server server_node=\"~s\" peer=\"~s\" result=success",
                                      [Node, gen_rpc_helper:peer_to_string({IpAddress, Port})]),
@@ -360,7 +361,7 @@ terminate(_Reason, _State) ->
 connect_to_tcp_server(Node) ->
     Host = gen_rpc_helper:host_from_node(Node),
     Port = gen_rpc_helper:get_remote_tcp_server_port(Node),
-    case gen_tcp:connect(Host, Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS), ?TCP_SERVER_CONN_TIMEOUT) of
+    case gen_tcp:connect(Host, Port, ?DEFAULT_TCP_OPTS, ?TCP_SERVER_CONN_TIMEOUT) of
         {ok, Socket} ->
             ok = lager:debug("event=connecting_to_server peer=\"~s\" socket=\"~p\" result=success", [Node, Socket]),
             {ok, {IpAddress, _Port}} = inet:peername(Socket),

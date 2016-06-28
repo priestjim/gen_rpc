@@ -12,8 +12,6 @@
 
 %%% Public API
 -export([otp_release/0,
-        default_tcp_opts/1,
-        acceptor_tcp_opts/0,
         peer_to_string/1,
         host_from_node/1,
         set_sock_opt/2,
@@ -43,23 +41,12 @@ otp_release() ->
             16
     end.
 
--spec default_tcp_opts([gen_tcp:option()]) -> [gen_tcp:option()].
-default_tcp_opts(DefaultTcpOpts) when is_list(DefaultTcpOpts) ->
-    case otp_release() >= 18 of
-        true ->
-            [{show_econnreset, true}|DefaultTcpOpts];
-        false ->
-            DefaultTcpOpts
-    end.
-
--spec acceptor_tcp_opts() -> list().
-acceptor_tcp_opts() ->
-    case otp_release() >= 18 of
-        true ->
-            [show_econnreset|?ACCEPTOR_TCP_OPTS];
-        false ->
-            ?ACCEPTOR_TCP_OPTS
-    end.
+-spec set_optimal_process_flags() -> ok.
+set_optimal_process_flags() ->
+    _ = erlang:process_flag(trap_exit, true),
+    _ = erlang:process_flag(priority, high),
+    _ = erlang:process_flag(message_queue_data, off_heap),
+    ok.
 
 %% Return the connected peer's IP
 -spec peer_to_string({inet:ip4_address(), inet:port_number()} | inet:ip4_address()) -> string().
@@ -84,7 +71,7 @@ host_from_node(Node) when is_atom(Node) ->
 -spec set_sock_opt(port(), port()) -> ok | {error, any()}.
 set_sock_opt(ListSock, AccSock) when is_port(ListSock), is_port(AccSock) ->
     true = inet_db:register_socket(AccSock, inet_tcp),
-    case prim_inet:getopts(ListSock, acceptor_tcp_opts()) of
+    case prim_inet:getopts(ListSock, ?ACCEPTOR_TCP_OPTS) of
         {ok, Opts} ->
             case prim_inet:setopts(AccSock, Opts) of
                 ok    -> ok;

@@ -18,7 +18,6 @@
 %%% Local state
 -record(state, {socket :: port(),
         peer :: tuple(),
-        acceptor_pid :: pid(),
         acceptor :: prim_inet:insock()}).
 
 %%% Supervisor functions
@@ -41,7 +40,7 @@ start_link(Peer) when is_tuple(Peer) ->
 
 -spec stop(pid()) -> ok.
 stop(Pid) when is_pid(Pid) ->
-    gen_server:call(Pid, stop).
+    gen_server:stop(Pid, normal, infinity).
 
 %%% ===================================================
 %%% Server functions
@@ -55,7 +54,7 @@ get_port(Pid) when is_pid(Pid) ->
 %%% ===================================================
 init({Peer}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
-    case gen_tcp:listen(0, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
+    case gen_tcp:listen(0, ?DEFAULT_TCP_OPTS) of
         {ok, Socket} ->
             ok = lager:info("event=listener_started_successfully peer=\"~s\"",
                             [gen_rpc_helper:peer_to_string(Peer)]),
@@ -72,11 +71,6 @@ handle_call(get_port, _From, #state{socket=Socket} = State) ->
     {ok, Port} = inet:port(Socket),
     ok = lager:debug("message=get_port socket=\"~p\" port=~B", [Socket,Port]),
     {reply, {ok, Port}, State};
-
-%% Gracefully stop
-handle_call(stop, _From, State) ->
-    ok = lager:debug("message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
-    {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _From, State) ->
