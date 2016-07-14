@@ -33,7 +33,7 @@ This message essentially means that the VM's distributed port pair was busy whil
 
 To build this project you need to have the following:
 
-* **Erlang/OTP** >= 17.0
+* **Erlang/OTP** >= 19.0
 
 * **git** >= 1.7
 

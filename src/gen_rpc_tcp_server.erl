@@ -35,7 +35,7 @@ start_link() ->
 
 -spec stop() -> ok.
 stop() ->
-    gen_server:call(?MODULE, stop).
+    gen_server:stop(?MODULE, normal, infinity).
 
 %%% ===================================================
 %%% Behaviour callbacks
@@ -43,7 +43,7 @@ stop() ->
 init({}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
     {ok, Port} = application:get_env(?APP, tcp_server_port),
-    case gen_tcp:listen(Port, gen_rpc_helper:default_tcp_opts(?DEFAULT_TCP_OPTS)) of
+    case gen_tcp:listen(Port, ?DEFAULT_TCP_OPTS) of
         {ok, Socket} ->
             ok = lager:info("event=listener_started_successfully port=\"~B\"", [Port]),
             {ok, Ref} = prim_inet:async_accept(Socket, -1),
@@ -52,11 +52,6 @@ init({}) ->
             ok = lager:critical("event=failed_to_start_listener reason=\"~p\"", [Reason]),
             {stop, Reason}
     end.
-
-%% Gracefully stop
-handle_call(stop, _From, State) ->
-    ok = lager:debug("message=stop event=stopping_server socket=\"~p\"", [State#state.socket]),
-    {stop, normal, ok, State};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _From, State) ->

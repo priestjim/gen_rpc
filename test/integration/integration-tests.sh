@@ -17,7 +17,7 @@ start_node() {
 	docker exec ${NAME} epmd -daemon
 	docker exec -t -i ${NAME} bash -c "echo gen_rpc > ~/.erlang.cookie"
 	docker exec -t -i ${NAME} bash -c "chmod 600 ~/.erlang.cookie"
-	docker exec -t -i ${NAME} bash -c "rm -fr /gen_rpc/*"
+	docker exec -t -i ${NAME} bash -c "rm -fr /gen_rpc"
 	docker cp ../../ ${NAME}:/
 	docker exec -t -i ${NAME} bash -c "cd /gen_rpc && make"
 	docker exec -t -i -d ${NAME} bash -c "cd /gen_rpc && ./rebar3 as dev do shell --name gen_rpc@${IP}"
@@ -37,7 +37,7 @@ start_master() {
 	docker cp ../../ ${NAME}:/
 	docker exec -t -i ${NAME} bash -c "cd /gen_rpc && make"
 	echo Starting integration tests on container ${NAME}
-	docker exec -t -i gen_rpc_master bash -c "export NODES=${NODES} NODE=gen_rpc@${IP} && cd /gen_rpc && make && ./rebar3 as test do ct --suite integration_SUITE"
+	docker exec -t -i gen_rpc_master bash -c "export NODES=${NODES} NODE=gen_rpc@${IP} && cd /gen_rpc && make && ./rebar3 as test do ct --suite test/ct/integration_SUITE"
 }
 
 destroy() {

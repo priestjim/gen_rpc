@@ -10,6 +10,7 @@
 -define(DEFAULT_TCP_OPTS, [binary,
         {packet,4},
         {exit_on_close,true},
+        {show_econnreset, true}, % Send message for reset connections
         {nodelay,true}, % Send our requests immediately
         {send_timeout_close,true}, % When the socket times out, close the connection
         {delay_send,false}, % Scheduler should favor timely delivery
@@ -27,6 +28,7 @@
 
 %%% The TCP options that should be copied from the listener to the acceptor
 -define(ACCEPTOR_TCP_OPTS, [nodelay,
+        show_econnreset,
         send_timeout_close,
         delay_send,
         linger,
