@@ -17,6 +17,7 @@
         set_sock_opt/2,
         make_process_name/2,
         extract_node_name/1,
+	set_optimal_process_flags/0,
         get_remote_tcp_server_port/1,
         get_connect_timeout/0,
         get_send_timeout/1,
