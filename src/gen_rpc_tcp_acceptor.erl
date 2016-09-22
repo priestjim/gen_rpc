@@ -59,7 +59,7 @@ init({Peer}) ->
     _OldVal = erlang:process_flag(trap_exit, true),
     ok = lager:debug("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP in our state
-    {state_functions, waiting_for_socket, #state{peer=Peer}}.
+    {ok, waiting_for_socket, #state{peer=Peer}}.
 
 callback_mode() ->
     state_functions.

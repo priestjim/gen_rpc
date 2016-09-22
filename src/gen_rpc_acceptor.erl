@@ -70,7 +70,7 @@ init({Peer}) ->
     end,
     ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP and the node in our state
-    {state_functions, waiting_for_socket, #state{peer=Peer,control=Control,list=ControlList}}.
+    {ok, waiting_for_socket, #state{peer=Peer,control=Control,list=ControlList}}.
 
 callback_mode() ->
     state_functions.
