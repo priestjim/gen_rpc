@@ -29,7 +29,7 @@
 -export([start_link/1, set_socket/2, stop/1]).
 
 %% gen_statem callbacks
--export([init/1, handle_event/4, terminate/3, code_change/4]).
+-export([init/1, handle_event/4, callback_mode/0, terminate/3, code_change/4]).
 
 %% FSM States
 -export([waiting_for_socket/3, waiting_for_data/3]).
@@ -71,6 +71,9 @@ init({Peer}) ->
     ok = lager:info("event=start peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     %% Store the client's IP and the node in our state
     {state_functions, waiting_for_socket, #state{peer=Peer,control=Control,list=ControlList}}.
+
+callback_mode() ->
+    state_functions.
 
 waiting_for_socket({call, From}, {socket_ready, Socket}, #state{peer=Peer} = State) ->
     % Now we own the socket
