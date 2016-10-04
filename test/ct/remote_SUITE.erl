@@ -161,11 +161,11 @@ async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     NbYieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
-    {value,{_,_,_}}= gen_rpc:nb_yield(NbYieldKey0, 10),
+    {value,{_,_,_}}= gen_rpc:nb_yield(NbYieldKey0, 50),
     YieldKey = gen_rpc:async_call(?SLAVE, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?SLAVE, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 10).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 50).
 
 async_call_yield_reentrant(_Config) ->
     YieldKey0 = gen_rpc:async_call(?SLAVE, os, timestamp, []),
@@ -189,27 +189,27 @@ async_call_yield_reentrant(_Config) ->
     YieldKey = gen_rpc:async_call(?SLAVE, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?SLAVE, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 10).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 50).
 
 async_call_mfa_undef(_Config) ->
     YieldKey = gen_rpc:async_call(?SLAVE, os, timestamp_undef),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, os, timestamp_undef),
-    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 20),
+    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 50),
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_exit(_Config) ->
     YieldKey = gen_rpc:async_call(?SLAVE, erlang, exit, ['die']),
     {badrpc, {'EXIT', die}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, erlang, exit, ['die']),
-    {value, {badrpc, {'EXIT', die}}} = gen_rpc:nb_yield(NBYieldKey, 10),
+    {value, {badrpc, {'EXIT', die}}} = gen_rpc:nb_yield(NBYieldKey, 50),
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_throw(_Config) ->
     YieldKey = gen_rpc:async_call(?SLAVE, erlang, throw, ['throwXdown']),
     'throwXdown' = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?SLAVE, erlang, throw, ['throwXdown']),
-    {value, 'throwXdown'} = gen_rpc:nb_yield(NBYieldKey, 10),
+    {value, 'throwXdown'} = gen_rpc:nb_yield(NBYieldKey, 50),
     ok = ct:pal("Result [async_call_mfa_undef]: throw Reason={throwXdown}").
 
 async_call_yield_timeout(_Config) ->
