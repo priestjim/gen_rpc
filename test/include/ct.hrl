@@ -11,20 +11,29 @@
 
 %%% Node definitions
 -define(MASTER, 'gen_rpc_master@127.0.0.1').
+-define(MASTER_PORT, 5369).
 -define(SLAVE, 'gen_rpc_slave@127.0.0.1').
+-define(SLAVE_PORT, 5370).
 -define(FAKE_NODE, 'fake_node@1.2.3.4').
+
+-define(DEFAULT_DRIVER, tcp).
 
 -define(TEST_APPLICATION_ENV, [{sasl, errlog_type, error},
         {sasl, error_logger_mf_dir, false},
-        {gen_rpc, connect_timeout, 500},
-        {gen_rpc, send_timeout, 500},
-        {gen_rpc, remote_tcp_server_ports, [
-            {?MASTER, 5369},
-            {?SLAVE, 5370}
-        ]},
-        {lager, colored, true},
+        {?APP, tcp_server_port, false},
+        {?APP, ssl_server_port, false},
+        {?APP, client_config_per_node, #{
+            ?MASTER => ?MASTER_PORT,
+            ?SLAVE => ?SLAVE_PORT
+        }},
+        {?APP, connect_timeout, 500},
+        {?APP, send_timeout, 500},
+        {lager, log_root, "./log"},
+        {lager, crash_log, "crash.log"},
+        {lager, crash_log_size, 0},
+        {lager, colored, false},
         {lager, handlers, [
-            % Commented out to reduce test output polution, uncomment during development
+            %% Commented out to reduce test output polution, uncomment during development
             % {lager_common_test_backend, [debug,
             %     {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
             %         "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}]},

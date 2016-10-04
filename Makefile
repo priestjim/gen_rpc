@@ -29,7 +29,7 @@
 .PHONY: all test dialyzer xref spec dist coveralls
 
 # Run targets
-.PHONY: shell
+.PHONY: shell shell-master shell-slave
 
 # Misc targets
 .PHONY: clean testclean distclean tags rebar
@@ -79,7 +79,6 @@ endif
 
 integration: image
 	@export NODES=$(NODES) && cd test/integration && bash -c "./integration-tests.sh $(NODES)"
-
 endif
 
 # =============================================================================
@@ -111,8 +110,13 @@ coveralls: $(COVERDATA)
 # Run targets
 # =============================================================================
 
-shell: $(REBAR) epmd
-	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc@127.0.0.1 --config test/gen_rpc.config
+shell: shell-master
+
+shell-master: $(REBAR) epmd
+	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc_master@127.0.0.1 --config test/gen_rpc.master.config
+
+shell-slave: $(REBAR) epmd
+	@REBAR_PROFILE=dev $(REBAR) do shell --name gen_rpc_slave@127.0.0.1 --config test/gen_rpc.slave.config
 
 # =============================================================================
 # Misc targets

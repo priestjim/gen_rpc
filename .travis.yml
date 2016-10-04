@@ -1,10 +1,10 @@
 sudo: false
 language: erlang
 otp_release:
-  - "19.0"
+  - "19.1"
 cache:
   directories:
-  - $HOME/otp/19.0
+  - $HOME/otp/19.1
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
@@ -15,5 +15,5 @@ branches:
     - develop
 notifications:
   email:
-    - priestjim@gmail.com
+    - pj@ezgr.net
 

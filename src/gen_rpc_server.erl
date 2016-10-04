@@ -10,116 +10,93 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Behaviour
--behaviour(gen_server).
+-behaviour(gen_statem).
 
+%%% Include the HUT library
+-include_lib("hut/include/hut.hrl").
 %%% Include this library's name macro
 -include("app.hrl").
 
 %%% Local state
+%%% Local state
 -record(state, {socket :: port(),
-        peer :: tuple(),
-        acceptor :: prim_inet:insock()}).
+        driver :: atom(),
+        driver_mod :: atom()}).
 
-%%% Supervisor functions
+%%% Server functions
 -export([start_link/1, stop/1]).
 
-%%% Server functions
--export([get_port/1]).
+%% gen_statem callbacks
+-export([init/1, handle_event/4, callback_mode/0, terminate/3, code_change/4]).
 
-%%% Behaviour callbacks
--export([init/1, handle_call/3, handle_cast/2,
-        handle_info/2, terminate/2, code_change/3]).
+%% State machine states
+-export([waiting_for_connection/3]).
 
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link({inet:ip4_address(), inet:port_number()}) -> gen_sever:startlink_ret().
-start_link(Peer) when is_tuple(Peer) ->
-    Name = gen_rpc_helper:make_process_name("server", Peer),
-    gen_server:start_link({local,Name}, ?MODULE, {Peer}, [{spawn_opt, [{priority, high}]}]).
+-spec start_link(atom()) -> gen_statem:startlink_ret().
+start_link(Driver) when is_atom(Driver) ->
+    case gen_rpc_helper:is_driver_enabled(Driver) of
+        false -> ignore;
+        true -> gen_statem:start_link({local,gen_rpc_helper:make_process_name("server", Driver)}, ?MODULE, {Driver}, [])
+    end.
 
--spec stop(pid()) -> ok.
-stop(Pid) when is_pid(Pid) ->
-    gen_server:stop(Pid, normal, infinity).
-
-%%% ===================================================
-%%% Server functions
-%%% ===================================================
--spec get_port(pid()) -> {ok, inet:port_number()} | {error, term()} | term(). %dialyzer complains without term().
-get_port(Pid) when is_pid(Pid) ->
-    gen_server:call(Pid, get_port).
+-spec stop(atom()) -> ok.
+stop(Driver) when is_atom(Driver) ->
+    gen_statem:stop(gen_rpc_helper:make_process_name("server", Driver), normal, infinity).
 
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
-init({Peer}) ->
-    _OldVal = erlang:process_flag(trap_exit, true),
-    case gen_tcp:listen(0, ?DEFAULT_TCP_OPTS) of
+init({Driver}) ->
+    ok = gen_rpc_helper:set_optimal_process_flags(),
+    {DriverMod, DriverPort, _ClosedMsg, _ErrorMsg} = gen_rpc_helper:get_server_driver_options(Driver),
+    case DriverMod:listen(DriverPort) of
         {ok, Socket} ->
-            ok = lager:info("event=listener_started_successfully peer=\"~s\"",
-                            [gen_rpc_helper:peer_to_string(Peer)]),
-            {ok, Ref} = prim_inet:async_accept(Socket, -1),
-            {ok, #state{peer=Peer, socket=Socket, acceptor=Ref}};
+            %% Launch a new acceptor with a new accept socket
+            ?log(info, "event=server_setup_successfully driver=~s socket=\"~s\"", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
+            {ok, waiting_for_connection, #state{socket=Socket, driver=Driver, driver_mod=DriverMod}, {next_event,internal,accept}};
         {error, Reason} ->
-            ok = lager:critical("event=failed_to_start_listener peer=\"~s\" reason=\"~p\"",
-                                [gen_rpc_helper:peer_to_string(Peer), Reason]),
+            ?log(error, "event=failed_to_setup_server driver=~s reason=\"~p\"", [Driver, Reason]),
             {stop, Reason}
     end.
 
-%% Returns the dynamic port the current TCP server listens to
-handle_call(get_port, _From, #state{socket=Socket} = State) ->
-    {ok, Port} = inet:port(Socket),
-    ok = lager:debug("message=get_port socket=\"~p\" port=~B", [Socket,Port]),
-    {reply, {ok, Port}, State};
+callback_mode() ->
+    state_functions.
 
-%% Catch-all for calls - die if we get a message we don't expect
-handle_call(Msg, _From, State) ->
-    ok = lager:critical("event=unknown_call_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
+waiting_for_connection(internal, accept, #state{socket=ListSock, driver=Driver, driver_mod=DriverMod} = State) ->
+    case DriverMod:accept(ListSock) of
+        {ok, AccSock} ->
+            ?log(info, "event=client_connection_received driver=~s socket=\"~s\" action=starting_acceptor",
+                 [Driver, gen_rpc_helper:socket_to_string(ListSock)]),
+            Peer = DriverMod:get_peer(AccSock),
+            {ok, AccPid} = gen_rpc_acceptor_sup:start_child(Driver, Peer),
+            case DriverMod:copy_sock_opts(ListSock, AccSock) of
+                ok -> ok;
+                {error, Reason} -> exit({set_sock_opt, Reason})
+            end,
+            ok = DriverMod:set_controlling_process(AccSock, AccPid),
+            ok = gen_rpc_acceptor:set_socket(AccPid, AccSock),
+            {keep_state_and_data, {next_event,internal,accept}};
+        {error, Reason} ->
+            ?log(error, "event=socket_error_event driver=~s socket=\"~s\" event=\"~p\" action=stopping",
+                 [Driver, gen_rpc_helper:socket_to_string(ListSock), Reason]),
+            {stop, {socket_error, Reason}, State}
+    end.
 
-%% Catch-all for casts - die if we get a message we don't expect
-handle_cast(Msg, State) ->
-    ok = lager:critical("event=unknown_cast_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    {stop, {unknown_cast, Msg}, State}.
+handle_event(EventType, Event, StateName, #state{socket=Socket, driver=Driver} = State) ->
+    ?log(error, "event=uknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
+         [Driver, gen_rpc_helper:socket_to_string(Socket), EventType, Event]),
+    {stop, {StateName, undefined_event, Event}, State}.
 
-handle_info({inet_async, ListSock, Ref, {ok, AccSocket}},
-            #state{peer=Peer, socket=ListSock, acceptor=Ref} = State) ->
-    try
-        ok = lager:info("event=client_connection_received peer=\"~s\" socket=\"~p\" action=starting_acceptor",
-                          [gen_rpc_helper:peer_to_string(Peer), ListSock]),
-        %% Start an acceptor process. We need to provide the acceptor
-        %% process with our designated node IP and name so enforcement
-        %% of those attributes can be made for security reasons.
-        {ok, AccPid} = gen_rpc_acceptor_sup:start_child(Peer),
-        %% Link to acceptor, if they die so should we, since we are single-receiver
-        %% to single-acceptor service
-        case gen_rpc_helper:set_sock_opt(ListSock, AccSocket) of
-            ok -> ok;
-            {error, Reason} -> exit({set_sock_opt, Reason})
-        end,
-        ok = gen_tcp:controlling_process(AccSocket, AccPid),
-        ok = gen_rpc_acceptor:set_socket(AccPid, AccSocket),
-        {stop, normal, State}
-    catch
-        exit:ExitReason ->
-            ok = lager:error("message=inet_async event=unknown_error socket=\"~p\" error=\"~p\" action=stopping",
-                            [ListSock, ExitReason]),
-            {stop, ExitReason, State}
-    end;
-
-%% Handle async socket errors gracefully
-handle_info({inet_async, ListSock, Ref, Error}, #state{socket=ListSock,acceptor=Ref} = State) ->
-    ok = lager:error("message=inet_async event=listener_error socket=\"~p\" error=\"~p\" action=stopping",
-                    [ListSock, Error]),
-    {stop, Error, State};
-
-%% Catch-all for info - our protocol is strict so die!
-handle_info(Msg, State) ->
-    ok = lager:critical("event=uknown_message_received socket=\"~p\" message=\"~p\" action=stopping", [State#state.socket, Msg]),
-    {stop, {unknown_message, Msg}, State}.
-
-terminate(_Reason, _State) ->
+terminate(_Reason, _StateName, _State) ->
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
+
+%%% ===================================================
+%%% Private functions
+%%% ===================================================
+

@@ -10,5 +10,5 @@ apt-get -qqy install wget && \
 wget http://packages.erlang-solutions.com/erlang-solutions_1.0_all.deb && \
 dpkg -i erlang-solutions_1.0_all.deb && \
 apt-get -qqy update && \
-apt-get -qqy install make gcc git esl-erlang elixir
+apt-get -qqy install make gcc git esl-erlang
 ENTRYPOINT ["/bin/bash"]
