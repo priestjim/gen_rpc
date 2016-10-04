@@ -19,7 +19,7 @@ To build this project you need to have the following:
 
 * **GNU make** >= 3.80
 
-* **rebar3** >= 3.1
+* **rebar3** >= 3.2
 
 ## Usage
 
@@ -282,7 +282,7 @@ An inactivity timeout has been implemented inside the `client` and `server` proc
 
 ## Performance
 
-`gen_rpc` is being used in production extensively with over **150.000 incoming calls/sec/node** on a **8-core Intel Xeon E5** CPU and **Erlang 18.2**. The median payload size is **500 KB**. No stability or scalability issues have been detected in over a year.
+`gen_rpc` is being used in production extensively with over **150.000 incoming calls/sec/node** on a **8-core Intel Xeon E5** CPU and **Erlang 19.1**. The median payload size is **500 KB**. No stability or scalability issues have been detected in over a year.
 
 ## Known Issues
 

@@ -25,6 +25,7 @@
         merge_sockopt_lists/2,
         get_server_driver_options/1,
         get_client_config_per_node/1,
+        get_client_driver_options/1,
         get_connect_timeout/0,
         get_send_timeout/1,
         get_rpc_module_control/0,
