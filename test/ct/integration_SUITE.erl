@@ -23,7 +23,9 @@ init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = gen_rpc_test_helper:start_distribution(this_node()),
     %% Setup application logging
-    ok = gen_rpc_test_helper:set_application_environment(),
+    ok = gen_rpc_test_helper:set_application_environment(?MASTER),
+    %% Setup the simple TCP driver
+    ok = gen_rpc_test_helper:set_driver_configuration(tcp, ?MASTER),
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
     Config.
@@ -72,7 +74,7 @@ remote_socket_close(_Config) ->
         [{_,AccPid,_,_}] = rpc:call(Node, supervisor, which_children, [gen_rpc_acceptor_sup]),
         true = rpc:call(Node, erlang, exit, [AccPid,normal])
     end, peers()),
-    ok = timer:sleep(100),
+    ok = timer:sleep(1000),
     Alive = gen_rpc:nodes(),
     ok = lists:foreach(fun(Node) ->
         false = lists:member(Node, Alive)

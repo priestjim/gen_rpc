@@ -17,73 +17,80 @@
 %%% CT callback functions
 %%% ===================================================
 all() ->
-    gen_rpc_test_helper:get_test_functions(?MODULE).
+    [{group, tcp}, {group, ssl}].
+    % [{group, tcp}].
 
-init_per_suite(Config) ->
+groups() ->
+    Cases = gen_rpc_test_helper:get_test_functions(?MODULE),
+    % [{tcp, [], Cases}].
+    [{tcp, [], Cases}, {ssl, [], Cases}].
+
+init_per_group(Group, Config) ->
+    % Our group name is the name of the driver
+    Driver = Group,
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
-    %% Setup application logging
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% Starting the application locally
-    {ok, _MasterApps} = application:ensure_all_started(?APP),
-    Config.
+    %% Setup the app locally
+    ok = gen_rpc_test_helper:start_master(Driver),
+    %% Save the driver in the state
+    gen_rpc_test_helper:store_driver_in_config(Driver, Config).
 
-end_per_suite(_Config) ->
+end_per_group(_Driver, _Config) ->
     ok.
 
 init_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    ok = gen_rpc_test_helper:start_slave(Driver),
     Config;
 
 init_per_testcase(server_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
+    ok = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     Config;
 
 init_per_testcase(rpc_module_whitelist, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
+    ok = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_list, [erlang, os]]),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_control, whitelist]),
     Config;
 
 init_per_testcase(rpc_module_blacklist, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
+    ok = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_list, [erlang, os]]),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_control, blacklist]),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
+    ok = gen_rpc_test_helper:start_slave(Driver),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:stop_slave(),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity),
     Config;
 
 end_per_testcase(server_inactivity_timeout, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:stop_slave(),
     ok = application:set_env(?APP, server_inactivity_timeout, infinity),
     Config;
 
 end_per_testcase(_OtherTest, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:stop_slave(),
     Config.
 
 %%% ===================================================
@@ -105,6 +112,16 @@ call_mfa_throw(_Config) ->
 call_with_receive_timeout(_Config) ->
     {badrpc, timeout} = gen_rpc:call(?SLAVE, timer, sleep, [500], 100),
     ok = timer:sleep(500).
+
+call_module_version_check_success(_Config) ->
+    stub_function = gen_rpc:call(?SLAVE, {gen_rpc_test_helper, "1.0.0"}, stub_function, []).
+
+call_module_version_check_incompatible(_Config) ->
+    {badrpc, incompatible} = gen_rpc:call(?SLAVE, {gen_rpc_test_helper, "X.Y.Z"}, stub_function, []).
+
+call_module_version_check_invalid(_Config) ->
+    {badrpc, incompatible} = gen_rpc:call(?SLAVE, {gen_rpc_test_helper1, "X.Y.Z"}, stub_function, []),
+    {badrpc, incompatible} = gen_rpc:call(?SLAVE, {rpc, 1}, cast, []).
 
 interleaved_call(_Config) ->
     %% Spawn 3 consecutive processes that execute gen_rpc:call
@@ -211,46 +228,50 @@ client_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
     ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
-    undefined = whereis(ClientName),
+    undefined = erlang:whereis(ClientName),
     [] = supervisor:which_children(gen_rpc_client_sup).
 
 server_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = timer:sleep(600),
     ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
-    undefined = whereis(ClientName),
+    undefined = erlang:whereis(ClientName),
     [] = supervisor:which_children(gen_rpc_client_sup).
 
 random_local_tcp_close(_Config) ->
-    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
-    {_, Socket} = sys:get_state(ClientName),
-    ok = gen_tcp:close(Socket),
-    ok = timer:sleep(100), % Give some time to the supervisor to kill the children
-    [] = gen_rpc:nodes(),
-    [] = supervisor:which_children(gen_rpc_client_sup),
-    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
-    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
+    {_Mega, _Sec, _Micro} = rpc:call(?SLAVE, gen_rpc, call, [?MASTER, os, timestamp, []]),
+    [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
+    true = erlang:exit(AccPid, kill),
+    ok = timer:sleep(600), % Give some time to the supervisor to kill the children
+    [] = rpc:call(?SLAVE, gen_rpc, nodes, []),
+    [] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_client_sup]).
 
 random_remote_tcp_close(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     [{_,AccPid,_,_}] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
     true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
-    ok = timer:sleep(100),
+    ok = timer:sleep(600),
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_client_sup),
-    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
-    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_server_sup]).
+    [] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]).
 
 rpc_module_whitelist(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ?SLAVE = gen_rpc:call(?SLAVE, erlang, node),
-    {badrpc,unauthorized} = gen_rpc:call(?SLAVE, application, which_applications).
+    {badrpc, unauthorized} = gen_rpc:call(?SLAVE, application, which_applications).
 
 rpc_module_blacklist(_Config) ->
     {badrpc, unauthorized} = gen_rpc:call(?SLAVE, os, timestamp),
     {badrpc, unauthorized} = gen_rpc:call(?SLAVE, erlang, node),
     60000 = gen_rpc:call(?SLAVE, timer, seconds, [60]).
+
+wrong_cookie(_Config) ->
+    OrigCookie = erlang:get_cookie(),
+    RandCookie = list_to_atom(atom_to_list(OrigCookie) ++ "123"),
+    true = erlang:set_cookie(node(), RandCookie),
+    {badrpc, invalid_cookie} = gen_rpc:call(?SLAVE, os, timestamp, []),
+    true = erlang:set_cookie(node(), OrigCookie).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases

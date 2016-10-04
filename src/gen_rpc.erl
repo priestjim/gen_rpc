@@ -36,51 +36,52 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
--spec async_call(node(), module(), atom()|function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F) ->
     gen_rpc_client:async_call(Node, M, F).
 
--spec async_call(node(), module(), atom()|function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F, A) ->
     gen_rpc_client:async_call(Node, M, F, A).
 
--spec call(node(), module(), atom()|function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
 
--spec call(node(), module(), atom()|function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A) ->
     gen_rpc_client:call(Node, M, F, A).
 
--spec call(node(), module(), atom()|function(), list(), timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) ->
+    term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO).
 
--spec call(node(), module(), atom()|function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
--spec cast(node(), module(), atom()|function()) -> true.
+-spec cast(node(), atom() | tuple(), atom() | function()) -> true.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
--spec cast(node(), module(), atom()|function(), list()) -> true.
+-spec cast(node(), atom() | tuple(), atom() | function(), list()) -> true.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
--spec cast(node(), module(), atom()|function(), list(), timeout() | undefined) -> true.
+-spec cast(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> true.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
--spec eval_everywhere([node()], module(), atom()|function()) -> abcast.
+-spec eval_everywhere([node()], atom() | tuple(), atom() | function()) -> abcast.
 eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F).
 
--spec eval_everywhere([node()], module(), atom()|function(), list()) -> abcast.
+-spec eval_everywhere([node()], atom() | tuple(), atom() | function(), list()) -> abcast.
 eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A).
 
--spec eval_everywhere([node()], module(), atom()|function(), list(), timeout() | undefined) -> abcast.
+-spec eval_everywhere([node()], atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> abcast.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A, SendTO).
 
@@ -96,15 +97,15 @@ nb_yield(Key) ->
 nb_yield(Key, Timeout) ->
     gen_rpc_client:nb_yield(Key, Timeout).
 
--spec multicall(module(), atom(), list()) -> {list(), list()}.
+-spec multicall(atom() | tuple(), atom(), list()) -> {list(), list()}.
 multicall(M, F, A) ->
     gen_rpc_client:multicall(M, F, A).
 
--spec multicall(list() | module(), module() | atom(), atom() | list(), list() | timeout()) -> {list(), list()}.
+-spec multicall(list() | atom() | tuple(), atom() | tuple(), atom() | list(), list() | timeout()) -> {list(), list()}.
 multicall(NodesOrModule, MorF, ForA, AorTimeout) ->
     gen_rpc_client:multicall(NodesOrModule, MorF, ForA, AorTimeout).
 
--spec multicall(list(), module(), atom(), list(), timeout()) -> {list(), list()}.
+-spec multicall(list(), atom() | tuple(), atom(), list(), timeout()) -> {list(), list()}.
 multicall(Nodes, M, F, A, Timeout) ->
     gen_rpc_client:multicall(Nodes, M, F, A, Timeout).
 

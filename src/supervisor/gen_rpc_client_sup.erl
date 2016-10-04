@@ -10,6 +10,9 @@
 %%% Behaviour
 -behaviour(supervisor).
 
+%%% Include the HUT library
+-include_lib("hut/include/hut.hrl").
+
 %%% Supervisor functions
 -export([start_link/0, start_child/1, stop_child/1, children_names/0]).
 
@@ -25,7 +28,7 @@ start_link() ->
 
 -spec start_child(node()) -> supervisor:startchild_ret().
 start_child(Node) when is_atom(Node) ->
-    ok = lager:debug("event=starting_new_client server_node=\"~s\"", [Node]),
+    ?log(debug, "event=starting_new_client server_node=\"~s\"", [Node]),
     case supervisor:start_child(?MODULE, [Node]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
@@ -39,9 +42,8 @@ start_child(Node) when is_atom(Node) ->
 
 -spec stop_child(pid()) -> ok.
 stop_child(Pid) when is_pid(Pid) ->
-    ok = lager:debug("event=stopping_client client_pid=\"~p\"", [Pid]),
+    ?log(debug, "event=stopping_client client_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
-    _ = supervisor:delete_child(?MODULE, Pid),
     ok.
 
 -spec children_names() -> list().
@@ -67,4 +69,3 @@ init([]) ->
     {ok, {{simple_one_for_one, 100, 1}, [
         {gen_rpc_client, {gen_rpc_client,start_link,[]}, temporary, 5000, worker, [gen_rpc_client]}
     ]}}.
-

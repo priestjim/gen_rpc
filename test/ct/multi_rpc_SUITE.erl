@@ -22,10 +22,8 @@ all() ->
 init_per_suite(Config) ->
     %% Starting Distributed Erlang on local node
     {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
-    %% Setup application logging
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% Starting the application locally
-    {ok, _MasterApps} = application:ensure_all_started(?APP),
+    %% Setup the app locally
+    ok = gen_rpc_test_helper:start_master(tcp),
     Config.
 
 end_per_suite(_Config) ->
@@ -33,21 +31,20 @@ end_per_suite(_Config) ->
 
 init_per_testcase(sbcast_with_bad_server, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    ok = gen_rpc_test_helper:start_master(tcp),
+    ok = gen_rpc_test_helper:start_slave(tcp),
     %% Set a low sbcast timeout
     ok = rpc:call(?SLAVE, application, set_env, [?APP, sbcast_receive_timeout, 500]),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
-    ok = gen_rpc_test_helper:set_application_environment(),
-    %% In order to connect to the slave
-    ok = gen_rpc_test_helper:start_slave(?SLAVE, 5370),
+    ok = gen_rpc_test_helper:start_master(tcp),
+    ok = gen_rpc_test_helper:start_slave(tcp),
     Config.
 
 end_per_testcase(_OtherTest, Config) ->
-    ok = gen_rpc_test_helper:stop_slave(?SLAVE),
+    ok = gen_rpc_test_helper:stop_slave(),
     Config.
 
 %%% ===================================================
@@ -58,11 +55,8 @@ eval_everywhere_mfa_no_node(_Config) ->
     ConnectedNodes = [],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, whereis, [node()]),
     % Nothing catastrophically on sender side after sending call to the ether.
-    true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
-    true = erlang:is_process_alive(whereis(gen_rpc_client_sup)),
-    true = erlang:is_process_alive(whereis(gen_rpc_tcp_acceptor_sup)),
-    true = erlang:is_process_alive(whereis(gen_rpc_tcp_server)).
+    true = erlang:is_process_alive(whereis(gen_rpc_client_sup)).
 
 %% Eval_everywhere is fire and forget, which means some test cases need to show
 %% something has been executed on target nodes.
@@ -110,7 +104,6 @@ eval_everywhere_mfa_exit_multiple_nodes(_Config) ->
     ConnectedNodes = [?SLAVE, ?SLAVE],
     abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, exit, [fatal]),
     % Nothing blows up on sender side after sending call to nothing
-    true = erlang:is_process_alive(whereis(gen_rpc_server_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_acceptor_sup)),
     true = erlang:is_process_alive(whereis(gen_rpc_client_sup)).
 
@@ -132,6 +125,18 @@ multicall_local_node(_Config) ->
 multicall_multiple_nodes(_Config) ->
     ConnectedNodes = [?SLAVE, ?SLAVE],
     {[{_,_,_}, {_,_,_}], []} = gen_rpc:multicall(ConnectedNodes, os, timestamp, []),
+    Nodes = gen_rpc:nodes(),
+    true = lists:member(?SLAVE, Nodes).
+
+multicall_with_bad_module_version(_Config) ->
+    ConnectedNodes = [?SLAVE, ?SLAVE],
+    {[], ConnectedNodes} = gen_rpc:multicall(ConnectedNodes, {gen_rpc_test_helper, "X.Y.Z"}, stub_function, []),
+    Nodes = gen_rpc:nodes(),
+    true = lists:member(?SLAVE, Nodes).
+
+multicall_with_good_module_version(_Config) ->
+    ConnectedNodes = [?SLAVE, ?SLAVE],
+    {[stub_function, stub_function], []} = gen_rpc:multicall(ConnectedNodes, {gen_rpc_test_helper, "1.0.0"}, stub_function, []),
     Nodes = gen_rpc:nodes(),
     true = lists:member(?SLAVE, Nodes).
 

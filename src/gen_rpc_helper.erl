@@ -7,48 +7,37 @@
 -module(gen_rpc_helper).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
+%%% Since a lot of these functions are simple
+%%% let's inline them
+-compile([inline]).
+
 %%% Include this library's name macro
 -include("app.hrl").
 
 %%% Public API
--export([otp_release/0,
-        peer_to_string/1,
+-export([peer_to_string/1,
+        socket_to_string/1,
         host_from_node/1,
-        set_sock_opt/2,
+        set_optimal_process_flags/0,
         make_process_name/2,
         extract_node_name/1,
-	set_optimal_process_flags/0,
-        get_remote_tcp_server_port/1,
+        is_driver_enabled/1,
+        merge_sockopt_lists/2,
+        get_server_driver_options/1,
+        get_client_config_per_node/1,
         get_connect_timeout/0,
         get_send_timeout/1,
+        get_rpc_module_control/0,
+        get_authentication_timeout/0,
         get_call_receive_timeout/1,
         get_sbcast_receive_timeout/0,
+        get_control_receive_timeout/0,
         get_inactivity_timeout/1,
         get_async_call_inactivity_timeout/0]).
 
 %%% ===================================================
 %%% Public API
 %%% ===================================================
--spec otp_release() -> integer().
-otp_release() ->
-    try
-        erlang:list_to_integer(erlang:system_info(otp_release))
-    catch
-        error:badarg ->
-            %% Before Erlang 17, R was included in the OTP release,
-            %% which would make the list_to_integer call fail.
-            %% Since we only use this function to test the availability
-            %% of the show_econnreset feature, 16 is good enough.
-            16
-    end.
-
--spec set_optimal_process_flags() -> ok.
-set_optimal_process_flags() ->
-    _ = erlang:process_flag(trap_exit, true),
-    _ = erlang:process_flag(priority, high),
-    _ = erlang:process_flag(message_queue_data, off_heap),
-    ok.
-
 %% Return the connected peer's IP
 -spec peer_to_string({inet:ip4_address(), inet:port_number()} | inet:ip4_address()) -> string().
 peer_to_string({{A,B,C,D}, Port}) when is_integer(A), is_integer(B), is_integer(C), is_integer(D), is_integer(Port) ->
@@ -60,6 +49,20 @@ peer_to_string({{A,B,C,D}, Port}) when is_integer(A), is_integer(B), is_integer(
 peer_to_string({A,B,C,D} = IpAddress) when is_integer(A), is_integer(B), is_integer(C), is_integer(D) ->
     peer_to_string({IpAddress, 0}).
 
+-spec socket_to_string(term()) -> string().
+socket_to_string(Socket) when is_port(Socket) ->
+    io_lib:format("~p", [Socket]);
+
+socket_to_string(Socket) when is_tuple(Socket) ->
+    case Socket of
+        {sslsocket, _, {TcpSock, _}} ->
+            io_lib:format("~p", [TcpSock]);
+        {sslsocket,{_, TcpSock, _, _}, _} ->
+            io_lib:format("~p", [TcpSock]);
+        _Else ->
+            ssl_socket
+    end.
+
 %% Return the remote Erlang hostname
 -spec host_from_node(node()) -> string().
 host_from_node(Node) when is_atom(Node) ->
@@ -67,33 +70,25 @@ host_from_node(Node) when is_atom(Node) ->
     [_Name, Host] = string:tokens(NodeStr, [$@]),
     Host.
 
-%% Taken from prim_inet.  We are merely copying some socket options from the
-%% listening socket to the new acceptor socket.
--spec set_sock_opt(port(), port()) -> ok | {error, any()}.
-set_sock_opt(ListSock, AccSock) when is_port(ListSock), is_port(AccSock) ->
-    true = inet_db:register_socket(AccSock, inet_tcp),
-    case prim_inet:getopts(ListSock, ?ACCEPTOR_TCP_OPTS) of
-        {ok, Opts} ->
-            case prim_inet:setopts(AccSock, Opts) of
-                ok    -> ok;
-                Error -> gen_tcp:close(AccSock), Error
-            end;
-        Error ->
-            (try
-                gen_tcp:close(AccSock)
-            catch
-                _:_ -> ok
-            end),
-            Error
-        end.
+%% Set optimal process flags
+-spec set_optimal_process_flags() -> ok.
+set_optimal_process_flags() ->
+    _ = erlang:process_flag(trap_exit, true),
+    _ = erlang:process_flag(priority, high),
+    _ = erlang:process_flag(message_queue_data, off_heap),
+    ok.
 
 %% Return an atom to identify gen_rpc processes
 -spec make_process_name(list(), {inet:ip4_address(), inet:port_number()} | atom()) -> atom().
 make_process_name("client", Node) when is_atom(Node) ->
     %% This function is going to be called enough to warrant a less pretty
     %% process name in order to avoid calling costly functions
-    NodeStr = atom_to_list(Node),
+    NodeStr = erlang:atom_to_list(Node),
     list_to_atom(lists:flatten(["gen_rpc.client.", NodeStr]));
+
+make_process_name("server", Driver) when is_atom(Driver) ->
+    DriverStr = erlang:atom_to_list(Driver),
+    list_to_atom(lists:flatten(["gen_rpc_server_", DriverStr]));
 
 make_process_name(Prefix, Peer) when is_list(Prefix), is_tuple(Peer) ->
     list_to_atom(lists:flatten(["gen_rpc.", Prefix, ".", peer_to_string(Peer)])).
@@ -106,30 +101,66 @@ extract_node_name(PidName) when is_atom(PidName) ->
     PidStr = atom_to_list(PidName),
     list_to_atom(lists:nthtail(15, PidStr)).
 
-%% Retrieves the default connect timeout
+%% Merge lists that contain both tuples and simple values observing
+%% keys in proplists
+-spec merge_sockopt_lists(list(), list()) -> list().
+merge_sockopt_lists(List1, List2) ->
+    SList1 = lists:usort(fun hybrid_proplist_compare/2, List1),
+    SList2 = lists:usort(fun hybrid_proplist_compare/2, List2),
+    lists:umerge(fun hybrid_proplist_compare/2, SList1, SList2).
+
+-spec is_driver_enabled(atom()) -> boolean().
+is_driver_enabled(Driver) when is_atom(Driver) ->
+    DriverStr = erlang:atom_to_list(Driver),
+    Setting = list_to_atom(lists:flatten([DriverStr, "_server_port"])),
+    case application:get_env(?APP, Setting) of
+        {ok, false} ->
+            false;
+        {ok, _Port} ->
+            true
+    end.
+
+-spec get_server_driver_options(atom()) -> tuple().
+get_server_driver_options(Driver) when is_atom(Driver) ->
+    DriverStr = erlang:atom_to_list(Driver),
+    DriverMod = list_to_atom(lists:flatten(["gen_rpc_driver_", DriverStr])),
+    ClosedMsg = list_to_atom(lists:flatten([DriverStr, "_closed"])),
+    ErrorMsg = list_to_atom(lists:flatten([DriverStr, "_error"])),
+    PortSetting = list_to_atom(lists:flatten([DriverStr, "_server_port"])),
+    {ok, DriverPort} = application:get_env(?APP, PortSetting),
+    {DriverMod, DriverPort, ClosedMsg, ErrorMsg}.
+
+-spec get_client_driver_options(atom()) -> tuple().
+get_client_driver_options(Driver) when is_atom(Driver) ->
+    DriverStr = erlang:atom_to_list(Driver),
+    DriverMod = list_to_atom(lists:flatten(["gen_rpc_driver_", DriverStr])),
+    ClosedMsg = list_to_atom(lists:flatten([DriverStr, "_closed"])),
+    ErrorMsg = list_to_atom(lists:flatten([DriverStr, "_error"])),
+    {DriverMod, ClosedMsg, ErrorMsg}.
+
+-spec get_client_config_per_node(atom()) -> {atom(), inet:port_number()}.
+get_client_config_per_node(Node) when is_atom(Node) ->
+    {ok, NodeConfig} = application:get_env(?APP, client_config_per_node),
+    case maps:find(Node, NodeConfig) of
+        error ->
+            {ok, Driver} = application:get_env(?APP, default_client_driver),
+            DriverStr = erlang:atom_to_list(Driver),
+            PortSetting = list_to_atom(lists:flatten([DriverStr, "_client_port"])),
+            {ok, Port} = application:get_env(?APP, PortSetting),
+            {Driver, Port};
+        {ok, Port} when is_integer(Port) ->
+            {ok, Driver} = application:get_env(?APP, default_client_driver),
+            {Driver, Port};
+        {ok, {Driver,Port}} ->
+            {Driver, Port}
+    end.
+
 -spec get_connect_timeout() -> timeout().
 get_connect_timeout() ->
     {ok, ConnTO} = application:get_env(?APP, connect_timeout),
     ConnTO.
 
-%% Retrieves the specific TCP server port
--spec get_remote_tcp_server_port(atom()) -> inet:port_number().
-get_remote_tcp_server_port(Node) ->
-    case application:get_env(?APP, remote_tcp_server_ports) of
-        {ok, []} ->
-            {ok, Port} = application:get_env(?APP, tcp_server_port),
-            Port;
-        {ok, Ports} ->
-            case lists:keyfind(Node, 1, Ports) of
-                false ->
-                    {ok, Port} = application:get_env(?APP, tcp_server_port),
-                    Port;
-                {Node, Port} ->
-                    Port
-            end
-    end.
-
-%% Merges user-defined receive timeout values with app timeout values
+%% Merges user-defined call receive timeout values with app timeout values
 -spec get_call_receive_timeout(undefined | timeout()) -> timeout().
 get_call_receive_timeout(undefined) ->
     {ok, RecvTO} = application:get_env(?APP, call_receive_timeout),
@@ -137,6 +168,34 @@ get_call_receive_timeout(undefined) ->
 
 get_call_receive_timeout(Else) ->
     Else.
+
+-spec get_rpc_module_control() -> {atom(), atom() | sets:set()}.
+get_rpc_module_control() ->
+    case application:get_env(?APP, rpc_module_control) of
+        {ok, disabled} ->
+            {disabled, disabled};
+        {ok, Type} when Type =:= whitelist; Type =:= blacklist ->
+            {ok, List} = application:get_env(?APP, rpc_module_list),
+            {Type, sets:from_list(List)}
+    end.
+
+%% Retrieves the default authentication timeout
+-spec get_authentication_timeout() -> timeout().
+get_authentication_timeout() ->
+    {ok, AuthTO} = application:get_env(?APP, authentication_timeout),
+    AuthTO.
+
+%% Returns the default sbcast receive timeout
+-spec get_sbcast_receive_timeout() -> timeout().
+get_sbcast_receive_timeout() ->
+    {ok, RecvTO} = application:get_env(?APP, sbcast_receive_timeout),
+    RecvTO.
+
+%% Returns the default dispatch receive timeout
+-spec get_control_receive_timeout() -> timeout().
+get_control_receive_timeout() ->
+    {ok, RecvTO} = application:get_env(?APP, control_receive_timeout),
+    RecvTO.
 
 %% Merges user-defined send timeout values with app timeout values
 -spec get_send_timeout(undefined | timeout()) -> timeout().
@@ -161,8 +220,11 @@ get_async_call_inactivity_timeout() ->
     {ok, TTL} = application:get_env(?APP, async_call_inactivity_timeout),
     TTL.
 
--spec get_sbcast_receive_timeout() -> timeout().
-get_sbcast_receive_timeout() ->
-    {ok, RecvTO} = application:get_env(?APP, sbcast_receive_timeout),
-    RecvTO.
+%%% ===================================================
+%%% Private functions
+%%% ===================================================
+hybrid_proplist_compare({K1,_V1}, {K2,_V2}) ->
+    K1 =< K2;
 
+hybrid_proplist_compare(K1, K2) ->
+    K1 =< K2.

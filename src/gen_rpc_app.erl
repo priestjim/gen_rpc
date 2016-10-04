@@ -22,11 +22,11 @@
 %%% ===================================================
 %%% Application callbacks
 %%% ===================================================
--spec start(application:start_type(),any()) -> {error,any()} | {ok,pid()} | {ok,pid(),any()}.
+-spec start(application:start_type(), term()) -> {error,any()} | {ok,pid()} | {ok,pid(),any()}.
 start(_StartType, _StartArgs) ->
     gen_rpc_sup:start_link().
 
--spec stop(any()) -> ok.
+-spec stop(term()) -> ok.
 stop(_State) ->
     ok.
 

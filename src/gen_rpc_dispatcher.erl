@@ -11,6 +11,8 @@
 %%% Behaviour
 -behaviour(gen_server).
 
+%%% Include the HUT library
+-include_lib("hut/include/hut.hrl").
 %%% Include this library's name macro
 -include("app.hrl").
 
@@ -43,36 +45,36 @@ start_client(Node) when is_atom(Node) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init([]) ->
-    ok = lager:info("event=start"),
+    ?log(info, "event=start"),
     {ok, undefined}.
 
 %% Simply launch a connection to a node through the appropriate
 %% supervisor. This is a serialization interface so that
 handle_call({start_client, Node}, _Caller, undefined) ->
     PidName = gen_rpc_helper:make_process_name("client", Node),
-    Reply = case whereis(PidName) of
+    Reply = case erlang:whereis(PidName) of
         undefined ->
-            ok = lager:debug("message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
+            ?log(debug, "message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
             gen_rpc_client_sup:start_child(Node);
         Pid ->
-            ok = lager:debug("message=start_client event=node_already_started server_node=\"~s\"", [Node]),
+            ?log(debug, "message=start_client event=node_already_started server_node=\"~s\"", [Node]),
             {ok, Pid}
     end,
     {reply, Reply, undefined};
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, undefined) ->
-    ok = lager:critical("event=uknown_call_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=uknown_call_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_call, Msg}, undefined}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, undefined) ->
-    ok = lager:critical("event=uknown_cast_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=uknown_cast_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_cast, Msg}, undefined}.
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, undefined) ->
-    ok = lager:critical("event=uknown_message_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=uknown_message_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_info, Msg}, undefined}.
 
 code_change(_OldVersion, undefined, _Extra) ->
