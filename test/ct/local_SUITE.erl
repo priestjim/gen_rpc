@@ -176,7 +176,7 @@ authentication_timeout(_Config) ->
     ok = timer:sleep(50),
     %% The acceptor has been launched
     [_Master] = supervisor:which_children(gen_rpc_acceptor_sup),
-    ok = timer:sleep(600),
+    ok = timer:sleep(1000),
     %% The acceptor should have shut down
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     ok.
