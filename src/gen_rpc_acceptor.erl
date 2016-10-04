@@ -24,7 +24,7 @@
         driver_closed :: atom(),
         driver_error :: atom(),
         peer :: {inet:ip4_address(), inet:port_number()},
-        control :: whitelist | blacklist | undefined,
+        control :: whitelist | blacklist | disabled,
         list :: sets:set() | undefined}).
 
 %%% Ignore dialyzer warning for call_middleman
@@ -260,7 +260,7 @@ call_middleman(M, F, A) ->
     ok.
 
 %% Check if the function is RPC-enabled
-check_if_module_allowed(_DriverMod, disabled, _List) ->
+check_if_module_allowed(_Module, disabled, _List) ->
     true;
 
 check_if_module_allowed(Module, whitelist, List) ->
