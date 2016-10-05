@@ -92,7 +92,9 @@ Finally, start a couple of nodes to test it out:
   It should be either `tcp` or `ssl`.
 
 - `client_config_per_node`: A map of `Node => {Driver, Port}` or `Node => Port` that instructs `gen_rpc` on the `Port`
-  and/or `Driver` to use when connecting to a `Node`.
+  and/or `Driver` to use when connecting to a `Node`. If you prefer to use an external discovery service to map `Nodes`
+  to `{Driver, Port}` tuples, instead of the map, you'll need to define a `{Module, Function}` tuple instead with a function
+  that takes the `Node` as its single argument, consumes the external discovery service and returns a `{Driver, Port}` tuple.
 
 - `rpc_module_control`: Set it to `blacklist` to define a list of modules that will not be exposed to `gen_rpc` or to `whitelist`
   to define the list of modules that will be exposed to `gen_rpc`. Set it to `disabled` to disable this feature.

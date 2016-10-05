@@ -15,6 +15,7 @@
     {files, [
         "LICENSE",
         "README.md",
+        "CHANGELOG.md",
         "include",
         "package.exs",
         "rebar.config",
@@ -41,6 +42,9 @@
         %% Describe it as node_name => {driver, port}
         %% Or node_name => driver to use the default port
         %% for the specified client driver
+        %% If you have an external service that allows discovery
+        %% of port/node mappings, you can replace the map
+        %% with an {M,F} tuple and it will be called instead
         {client_config_per_node, #{}},
         %% List of modules available for RPC
         %% This is either whitelist, blacklist or disabled

@@ -139,21 +139,20 @@ get_client_driver_options(Driver) when is_atom(Driver) ->
     ErrorMsg = list_to_atom(lists:flatten([DriverStr, "_error"])),
     {DriverMod, ClosedMsg, ErrorMsg}.
 
--spec get_client_config_per_node(atom()) -> {atom(), inet:port_number()}.
+-spec get_client_config_per_node(atom()) -> {atom(), inet:port_number()} | {error, {atom(), term()}}.
 get_client_config_per_node(Node) when is_atom(Node) ->
     {ok, NodeConfig} = application:get_env(?APP, client_config_per_node),
-    case maps:find(Node, NodeConfig) of
-        error ->
-            {ok, Driver} = application:get_env(?APP, default_client_driver),
-            DriverStr = erlang:atom_to_list(Driver),
-            PortSetting = list_to_atom(lists:flatten([DriverStr, "_client_port"])),
-            {ok, Port} = application:get_env(?APP, PortSetting),
-            {Driver, Port};
-        {ok, Port} when is_integer(Port) ->
-            {ok, Driver} = application:get_env(?APP, default_client_driver),
-            {Driver, Port};
-        {ok, {Driver,Port}} ->
-            {Driver, Port}
+    case NodeConfig of
+        {M, F} ->
+            try
+                {Driver, Port} = M:F(Node),
+                {Driver, Port}
+            catch
+                Class:Reason ->
+                    {error, {Class,Reason}}
+            end;
+        NodeConfig ->
+            get_client_config_from_map(Node, NodeConfig)
     end.
 
 -spec get_connect_timeout() -> timeout().
@@ -224,6 +223,21 @@ get_async_call_inactivity_timeout() ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+get_client_config_from_map(Node, NodeConfig) ->
+    case maps:find(Node, NodeConfig) of
+        error ->
+            {ok, Driver} = application:get_env(?APP, default_client_driver),
+            DriverStr = erlang:atom_to_list(Driver),
+            PortSetting = list_to_atom(lists:flatten([DriverStr, "_client_port"])),
+            {ok, Port} = application:get_env(?APP, PortSetting),
+            {Driver, Port};
+        {ok, {Driver,Port}} ->
+            {Driver, Port};
+        {ok, Port} ->
+            {ok, Driver} = application:get_env(?APP, default_client_driver),
+            {Driver, Port}
+    end.
+
 hybrid_proplist_compare({K1,_V1}, {K2,_V2}) ->
     K1 =< K2;
 

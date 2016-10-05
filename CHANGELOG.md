@@ -2,6 +2,11 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
+## 2.0.1
+
+- Support external node driver/port discovery using an `{M, F}` tuple instead of
+  a map in `client_config_per_node`.
+
 ## 2.0.0
 
 This release boasts a major rengineer/refactor of `gen_rpc` that includes quite a few new features:

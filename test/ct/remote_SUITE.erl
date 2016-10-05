@@ -72,6 +72,16 @@ init_per_testcase(rpc_module_blacklist, Config) ->
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_control, blacklist]),
     Config;
 
+init_per_testcase(external_client_config_source, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    ok = gen_rpc_test_helper:start_master(ssl),
+    ok = gen_rpc_test_helper:start_slave(tcp),
+    %% No need to restore original setting with an
+    %% end_per_testcase since this setting gets overwritten
+    %% upon every application restart
+    ok = application:set_env(?APP, client_config_per_node, {?MODULE, external_client_config_fun}),
+    Config;
+
 init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
@@ -266,6 +276,9 @@ rpc_module_blacklist(_Config) ->
     {badrpc, unauthorized} = gen_rpc:call(?SLAVE, erlang, node),
     60000 = gen_rpc:call(?SLAVE, timer, seconds, [60]).
 
+external_client_config_source(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp).
+
 wrong_cookie(_Config) ->
     OrigCookie = erlang:get_cookie(),
     RandCookie = list_to_atom(atom_to_list(OrigCookie) ++ "123"),
@@ -313,3 +326,11 @@ interleaved_call_executor(Num) when is_integer(Num) ->
     ok = timer:sleep((3 - Num) * 1000),
     %% Then return the number
     Num.
+
+%% Enable TCP only communication to the slave when testing
+%% the external client config source
+%% This should force communication with the slave
+%% over TCP even on the SSL group
+external_client_config_fun(?SLAVE) ->
+  {tcp, ?SLAVE_PORT}.
+
