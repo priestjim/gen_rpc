@@ -8,7 +8,7 @@ cache:
   - $HOME/.cache/rebar3
   - _plt
 install: "true"
-script: "make testclean dist coveralls"
+script: "make travis"
 branches:
   only:
     - master

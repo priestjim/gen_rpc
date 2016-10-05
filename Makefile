@@ -9,7 +9,7 @@
 # distclean:        rebar3 as dev do clean -a
 #                   and explicitly delete other build artifacts
 # test: 		    rebar3 as test do ct -v, cover
-# coveralls:        Send coverage to coveralls.io
+# travis:           Run the proper tests/coveralls in travis
 # dialyzer:         rebar3 as test do dialyzer
 # xref:             rebar3 as dev do xref
 # dist:             rebar3 as test do compile, ct -v -c, xref, dialyzer, cover
@@ -26,7 +26,7 @@
 .DEFAULT_GOAL := all
 
 # Build targets
-.PHONY: all test dialyzer xref spec dist coveralls
+.PHONY: all test dialyzer xref spec dist travis
 
 # Run targets
 .PHONY: shell shell-master shell-slave
@@ -61,8 +61,6 @@ REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 OTP_RELEASE = $(shell escript otp-release.escript)
 
 PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
-
-COVERDATA = $(CURDIR)/_build/test/ct.coverdata
 
 # ======================
 # Integration test logic
@@ -103,7 +101,7 @@ spec: dialyzer
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
 
-coveralls: $(COVERDATA)
+travis: testclean dist
 	@REBAR_PROFILE=test $(REBAR) do coveralls send || true
 
 # =============================================================================
@@ -145,9 +143,6 @@ $(REBAR):
 
 tags:
 	find src _build/default/lib -name "*.[he]rl" -print | etags -
-
-$(COVERDATA):
-	@$(MAKE) test
 
 $(PLT_FILE):
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer || true

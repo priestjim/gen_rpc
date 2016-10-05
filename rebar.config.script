@@ -2,7 +2,7 @@
 %%% ex: set ft=erlang fenc=utf-8 sts=4 ts=4 sw=4 et:
 %%%
 
-Coveralls = {coveralls, {git, "https://github.com/markusn/coveralls-erl", "master"}},
+Coveralls = {coveralls, {git, "https://github.com/markusn/coveralls-erl", {branch, "master"}}},
 
 case os:getenv("TRAVIS") of
   "true" ->
