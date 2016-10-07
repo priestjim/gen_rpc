@@ -34,3 +34,15 @@
         keepalive,
         tos,
         active]).
+
+-define(DARWIN_SOL_SOCKET, 16#ffff).
+-define(DARWIN_SO_KEEPALIVE, 16#0008).
+-define(DARWIN_TCP_KEEPIDLE, 16#10). % idle time used when SO_KEEPALIVE is enabled
+-define(DARWIN_TCP_KEEPINTVL, 16#101). % interval between keepalives
+-define(DARWIN_TCP_KEEPCNT, 16#102). % number of keepalives before close
+
+-define(LINUX_SOL_SOCKET, 16#0001).
+-define(LINUX_SO_KEEPALIVE, 16#0009).
+-define(LINUX_TCP_KEEPIDLE, 16#4). % idle time used when SO_KEEPALIVE is enabled
+-define(LINUX_TCP_KEEPINTVL, 16#5). % interval between keepalives
+-define(LINUX_TCP_KEEPCNT, 16#6). % number of keepalives before close

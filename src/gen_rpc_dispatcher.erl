@@ -15,6 +15,10 @@
 -include_lib("hut/include/hut.hrl").
 %%% Include this library's name macro
 -include("app.hrl").
+%%% Include helpful guard macros
+-include("guards.hrl").
+%%% Include helpful guard macros
+-include("types.hrl").
 
 %%% Supervisor functions
 -export([start_link/0, stop/0]).
@@ -37,9 +41,9 @@ start_link() ->
 stop() ->
     gen_server:stop(?MODULE, normal, infinity).
 
--spec start_client(node()) -> {ok, pid()} | {error, any()}.
-start_client(Node) when is_atom(Node) ->
-    gen_server:call(?MODULE, {start_client,Node}, infinity).
+-spec start_client(node_or_tuple()) -> {ok, pid()} | {error, any()}.
+start_client(NodeOrTuple) when ?is_node_or_tuple(NodeOrTuple) ->
+    gen_server:call(?MODULE, {start_client,NodeOrTuple}, infinity).
 
 %%% ===================================================
 %%% Behaviour callbacks
@@ -50,14 +54,14 @@ init([]) ->
 
 %% Simply launch a connection to a node through the appropriate
 %% supervisor. This is a serialization interface so that
-handle_call({start_client, Node}, _Caller, undefined) ->
-    PidName = gen_rpc_helper:make_process_name("client", Node),
+handle_call({start_client, NodeOrTuple}, _Caller, undefined) ->
+    PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
     Reply = case erlang:whereis(PidName) of
         undefined ->
-            ?log(debug, "message=start_client event=starting_client_server server_node=\"~s\"", [Node]),
-            gen_rpc_client_sup:start_child(Node);
+            ?log(debug, "message=start_client event=starting_client_server target=\"~p\"", [NodeOrTuple]),
+            gen_rpc_client_sup:start_child(NodeOrTuple);
         Pid ->
-            ?log(debug, "message=start_client event=node_already_started server_node=\"~s\"", [Node]),
+            ?log(debug, "message=start_client event=node_already_started target=\"~p\"", [NodeOrTuple]),
             {ok, Pid}
     end,
     {reply, Reply, undefined};

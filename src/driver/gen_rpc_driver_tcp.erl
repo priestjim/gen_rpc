@@ -193,9 +193,32 @@ set_send_timeout(Socket, SendTO) when is_port(Socket) ->
 
 -spec set_acceptor_opts(port()) -> ok.
 set_acceptor_opts(Socket) when is_port(Socket) ->
+    ok = set_socket_keepalive(os:type(), Socket),
     ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}|?ACCEPTOR_DEFAULT_TCP_OPTS]),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+set_socket_keepalive({unix, darwin}, Socket) ->
+    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
+    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
+    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
+    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_SO_KEEPALIVE, <<1:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
+    ok;
+
+set_socket_keepalive({unix, linux}, Socket) ->
+    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
+    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
+    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
+    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_SO_KEEPALIVE, <<1:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
+    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
+    ok;
+
+set_socket_keepalive(_Unsupported, _Socket) ->
+    ok.

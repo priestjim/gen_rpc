@@ -13,6 +13,8 @@
 
 %%% Include this library's name macro
 -include("app.hrl").
+%%% Include helpful guard macros
+-include("types.hrl").
 
 %%% Public API
 -export([peer_to_string/1,
@@ -20,7 +22,6 @@
         host_from_node/1,
         set_optimal_process_flags/0,
         make_process_name/2,
-        extract_node_name/1,
         is_driver_enabled/1,
         merge_sockopt_lists/2,
         get_server_driver_options/1,
@@ -42,11 +43,11 @@
 %% Return the connected peer's IP
 -spec peer_to_string({inet:ip4_address(), inet:port_number()} | inet:ip4_address()) -> string().
 peer_to_string({{A,B,C,D}, Port}) when is_integer(A), is_integer(B), is_integer(C), is_integer(D), is_integer(Port) ->
-    lists:flatten([integer_to_list(A), ".",
-    integer_to_list(B), ".",
-    integer_to_list(C), ".",
-    integer_to_list(D), ":",
-    integer_to_list(Port)]);
+    integer_to_list(A) ++ "." ++
+    integer_to_list(B) ++ "." ++
+    integer_to_list(C) ++ "." ++
+    integer_to_list(D) ++ ":" ++
+    integer_to_list(Port);
 peer_to_string({A,B,C,D} = IpAddress) when is_integer(A), is_integer(B), is_integer(C), is_integer(D) ->
     peer_to_string({IpAddress, 0}).
 
@@ -80,27 +81,27 @@ set_optimal_process_flags() ->
     ok.
 
 %% Return an atom to identify gen_rpc processes
--spec make_process_name(list(), {inet:ip4_address(), inet:port_number()} | atom()) -> atom().
+%%
+-spec make_process_name(list(), {inet:ip4_address(), inet:port_number()} | node_or_tuple()) -> atom().
+make_process_name("client", {Node,Key}) when is_atom(Node) ->
+    %% This function is going to be called enough to warrant a less pretty
+    %% process name in order to avoid calling costly functions
+    KeyStr = erlang:integer_to_list(erlang:phash2(Key)),
+    NodeStr = erlang:atom_to_list(Node),
+    erlang:list_to_atom("gen_rpc.client." ++ NodeStr ++ "/" ++ KeyStr);
+
 make_process_name("client", Node) when is_atom(Node) ->
     %% This function is going to be called enough to warrant a less pretty
     %% process name in order to avoid calling costly functions
     NodeStr = erlang:atom_to_list(Node),
-    list_to_atom(lists:flatten(["gen_rpc.client.", NodeStr]));
+    erlang:list_to_atom("gen_rpc.client." ++ NodeStr);
 
 make_process_name("server", Driver) when is_atom(Driver) ->
     DriverStr = erlang:atom_to_list(Driver),
-    list_to_atom(lists:flatten(["gen_rpc_server_", DriverStr]));
+    erlang:list_to_atom("gen_rpc_server_" ++ DriverStr);
 
-make_process_name(Prefix, Peer) when is_list(Prefix), is_tuple(Peer) ->
-    list_to_atom(lists:flatten(["gen_rpc.", Prefix, ".", peer_to_string(Peer)])).
-
-%% Extract the node name from a gen_rpc client process name
--spec extract_node_name(atom()) -> atom().
-extract_node_name(PidName) when is_atom(PidName) ->
-    %% The process name follows the convention
-    %% gen_rpc.client.(node name) which is 15 chars long
-    PidStr = atom_to_list(PidName),
-    list_to_atom(lists:nthtail(15, PidStr)).
+make_process_name("acceptor", Peer) when is_tuple(Peer) ->
+    erlang:list_to_atom("gen_rpc.acceptor." ++ peer_to_string(Peer)).
 
 %% Merge lists that contain both tuples and simple values observing
 %% keys in proplists
@@ -113,7 +114,7 @@ merge_sockopt_lists(List1, List2) ->
 -spec is_driver_enabled(atom()) -> boolean().
 is_driver_enabled(Driver) when is_atom(Driver) ->
     DriverStr = erlang:atom_to_list(Driver),
-    Setting = list_to_atom(lists:flatten([DriverStr, "_server_port"])),
+    Setting = erlang:list_to_atom(DriverStr ++ "_server_port"),
     case application:get_env(?APP, Setting) of
         {ok, false} ->
             false;
@@ -124,26 +125,28 @@ is_driver_enabled(Driver) when is_atom(Driver) ->
 -spec get_server_driver_options(atom()) -> tuple().
 get_server_driver_options(Driver) when is_atom(Driver) ->
     DriverStr = erlang:atom_to_list(Driver),
-    DriverMod = list_to_atom(lists:flatten(["gen_rpc_driver_", DriverStr])),
-    ClosedMsg = list_to_atom(lists:flatten([DriverStr, "_closed"])),
-    ErrorMsg = list_to_atom(lists:flatten([DriverStr, "_error"])),
-    PortSetting = list_to_atom(lists:flatten([DriverStr, "_server_port"])),
+    DriverMod = erlang:list_to_atom("gen_rpc_driver_" ++ DriverStr),
+    ClosedMsg = erlang:list_to_atom(DriverStr ++ "_closed"),
+    ErrorMsg = erlang:list_to_atom(DriverStr ++ "_error"),
+    PortSetting = erlang:list_to_atom(DriverStr ++ "_server_port"),
     {ok, DriverPort} = application:get_env(?APP, PortSetting),
     {DriverMod, DriverPort, ClosedMsg, ErrorMsg}.
 
 -spec get_client_driver_options(atom()) -> tuple().
 get_client_driver_options(Driver) when is_atom(Driver) ->
     DriverStr = erlang:atom_to_list(Driver),
-    DriverMod = list_to_atom(lists:flatten(["gen_rpc_driver_", DriverStr])),
-    ClosedMsg = list_to_atom(lists:flatten([DriverStr, "_closed"])),
-    ErrorMsg = list_to_atom(lists:flatten([DriverStr, "_error"])),
+    DriverMod = erlang:list_to_atom("gen_rpc_driver_" ++ DriverStr),
+    ClosedMsg = erlang:list_to_atom(DriverStr ++ "_closed"),
+    ErrorMsg = erlang:list_to_atom(DriverStr ++ "_error"),
     {DriverMod, ClosedMsg, ErrorMsg}.
 
--spec get_client_config_per_node(atom()) -> {atom(), inet:port_number()} | {error, {atom(), term()}}.
+-spec get_client_config_per_node(node_or_tuple()) -> {atom(), inet:port_number()} | {error, {atom(), term()}}.
+get_client_config_per_node({Node, _Key}) ->
+    get_client_config_per_node(Node);
 get_client_config_per_node(Node) when is_atom(Node) ->
     {ok, NodeConfig} = application:get_env(?APP, client_config_per_node),
     case NodeConfig of
-        {external, Module} ->
+        {external, Module} when is_atom(Module) ->
             try Module:get_config(Node) of
                 {Driver, Port} when is_atom(Driver), is_integer(Port), Port > 0 ->
                     {Driver, Port};
@@ -230,7 +233,7 @@ get_client_config_from_map(Node, NodeConfig) ->
         error ->
             {ok, Driver} = application:get_env(?APP, default_client_driver),
             DriverStr = erlang:atom_to_list(Driver),
-            PortSetting = list_to_atom(lists:flatten([DriverStr, "_client_port"])),
+            PortSetting = erlang:list_to_atom(DriverStr ++ "_client_port"),
             {ok, Port} = application:get_env(?APP, PortSetting),
             {Driver, Port};
         {ok, {Driver,Port}} ->

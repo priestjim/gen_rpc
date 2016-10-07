@@ -10,3 +10,4 @@
 -define(is_process(A), is_pid(A) orelse is_atom(A)).
 -define(is_limit(A), (is_integer(A) andalso A >= 0) orelse A =:= infinity).
 -define(is_timeout(A), (is_integer(A) andalso A >= 0) orelse A =:= infinity).
+-define(is_node_or_tuple(A), is_atom(A) orelse is_tuple(A)).
