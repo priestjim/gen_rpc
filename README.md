@@ -97,7 +97,7 @@ For more information on what the functions below do, run `erl -man rpc`.
 ### Per-Key Sharding
 
 `gen_rpc` supports multiple outgoing connections per node using a key of arbitrary type to differentiate between connections.
-To leverage this feature, replace `Node` in your calls (**single-node** and **multi-node** alike) with `{Key, Node}`. The `Key` is hashed using `erlang:phash2/1`, attached to the client process name and a new connection is initiated.
+To leverage this feature, replace `Node` in your calls (**single-node** and **multi-node** alike) with `{Node, Key}`. The `Key` is hashed using `erlang:phash2/1`, attached to the client process name and a new connection is initiated.
 
 **Attention:** When using functions that call `gen_rpc:nodes/0` implicitly (such as `gen_rpc:multicall/3`), the channels
 used to communicate to the nodes are the **keyless** ones. To leverage the sharded functionality, pre-create your `{Node, Key}` lists
