@@ -72,6 +72,40 @@ Finally, start a couple of nodes to test it out:
 (my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
 'other_node@1.2.3.4'
 ```
+## API
+
+`gen_rpc` implements only the subset of the functions of the `rpc` library that make sense for the problem it's trying to solve. The library's function interface and return values is **100%** compatible with `rpc` with only one addition: Error return values include `{badrpc, Error}` for RPC-based errors but also `{badtcp, Error}` for TCP-based errors.
+
+For more information on what the functions below do, run `erl -man rpc`.
+
+### Functions exported
+
+- `call(NodeOrNodeAndKey, Module, Function, Args)` and `call(NodeOrNodeAndKey, Module, Function, Args, Timeout)`: A blocking synchronous call, in the `gen_server` fashion.
+
+- `cast(NodeOrNodeAndKey, Module, Function, Args)`: A non-blocking fire-and-forget call.
+
+- `async_call(NodeOrNodeAndKey, Module, Function, Args)`, `yield(Key)`, `nb_yield(Key)` and `nb_yield(Key, Timeout)`: Promise-based calls. Make a call with `async_call` and retrieve the result asynchronously, when you need it with `yield` or `nb_yield`.
+
+- `multicall(Module, Function, Args)`, `multicall(Nodes, Module, Function, Args)`, `multicall(Module, Function, Args, Timeout)` and `multicall(NodesOrNodesWithKeys, Module, Function, Args, Timeout)`: Multi-node version of the `call` function.
+
+- `abcast(NodesOrNodesWithKeys, Name, Msg)` and `abcast(Name, Msg)`: An asynchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `NodesOrNodesWithKeys`.
+
+- `sbcast(NodesOrNodesWithKeys, Name, Msg)` and `sbcast(Name, Msg)`: A synchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `NodesOrNodesWithKeys`. Returns the nodes in which the named process is alive and the nodes in which it isn't.
+
+- `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
+
+### Per-Key Sharding
+
+`gen_rpc` supports multiple outgoing connections per node using a key of arbitrary type to differentiate between connections.
+To leverage this feature, replace `Node` in your calls (**single-node** and **multi-node** alike) with `{Key, Node}`. The `Key` is hashed using `erlang:phash2/1`, attached to the client process name and a new connection is initiated.
+
+**Attention:** When using functions that call `gen_rpc:nodes/0` implicitly (such as `gen_rpc:multicall/3`), the channels
+used to communicate to the nodes are the **keyless** ones. To leverage the sharded functionality, pre-create your `{Node, Key}` lists
+and pass them as the node list in the multi-node function.
+
+### Module version control
+
+`gen_rpc` supports executing RPC calls on remote nodes that are running only specific module versions. To leverage that feature, in place of `Module` in the section above, use `{Module, Version}`. If the remote `module` is not on the version requested a `{badrpc,incompatible]` will be returned.
 
 ## Application settings
 
@@ -118,11 +152,11 @@ Finally, start a couple of nodes to test it out:
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
 
-## External Source Support
+- `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers).
 
-`gen_rpc` can call an external module to provide driver/port mappings in case you want to use an external discovery service like `etcd`
-for node configuration management. The module should implement the `gen_rpc_external_source` behaviour which takes the `Node` as an argument and should return either `{Driver, Port}` (`Driver` being `tcp` or `ssl` and `Port` being the port the remote node's
-`gen_rpc`'s driver is listening in) or `{error, Reason}` (if the service is unavailable). To set it, change `client_config_per_node` from the default of `{internal, #{}}` to `{external, ModuleName}` where `ModuleName` is the module that implements the `gen_rpc_external_source` behaviour.
+- `socket_keepalive_interval`: Seconds between keepalive probes.
+
+- `socket_keepalive_count`: Probs lost to consider the socket closed
 
 ## Logging
 
@@ -173,6 +207,12 @@ Usually, the CA that will be signing your client and server SSL certificates wil
 
 For multi-site deployments, a performant setup can be provisioned with edge `gen_rpc` nodes using SSL over the internet and plain TCP for internal data exchange. In that case, non-edge nodes can have `{ssl_server_port, false}` and `{default_client_driver, tcp}` and edge nodes can have their plain TCP port firewalled externally and `{default_client_driver, ssl}`.
 
+## External Source Support
+
+`gen_rpc` can call an external module to provide driver/port mappings in case you want to use an external discovery service like `etcd`
+for node configuration management. The module should implement the `gen_rpc_external_source` behaviour which takes the `Node` as an argument and should return either `{Driver, Port}` (`Driver` being `tcp` or `ssl` and `Port` being the port the remote node's
+`gen_rpc`'s driver is listening in) or `{error, Reason}` (if the service is unavailable). To set it, change `client_config_per_node` from the default of `{internal, #{}}` to `{external, ModuleName}` where `ModuleName` is the module that implements the `gen_rpc_external_source` behaviour.
+
 ## Build Targets
 
 `gen_rpc` bundles a `Makefile` that makes development straightforward.
@@ -215,32 +255,6 @@ by running the command:
     make integration
 
 This will launch 3 slave containers and 1 master (change that by `NODES=5 make integration`) and will run the `integration_SUITE` CT test suite.
-
-## API
-
-`gen_rpc` implements only the subset of the functions of the `rpc` library that make sense for the problem it's trying to solve. The library's function interface and return values is **100%** compatible with `rpc` with only one addition: Error return values include `{badrpc, Error}` for RPC-based errors but also `{badtcp, Error}` for TCP-based errors.
-
-For more information on what the functions below do, run `erl -man rpc`.
-
-### Functions exported
-
-- `call(Node, Module, Function, Args)` and `call(Node, Module, Function, Args, Timeout)`: A blocking synchronous call, in the `gen_server` fashion.
-
-- `cast(Node, Module, Function, Args)`: A non-blocking fire-and-forget call.
-
-- `async_call(Node, Module, Function, Args)`, `yield(Key)`, `nb_yield(Key)` and `nb_yield(Key, Timeout)`: Promise-based calls. Make a call with `async_call` and retrieve the result asynchronously, when you need it with `yield` or `nb_yield`.
-
-- `multicall(Module, Function, Args)`, `multicall(Nodes, Module, Function, Args)`, `multicall(Module, Function, Args, Timeout)` and `multicall(Nodes, Module, Function, Args, Timeout)`: Multi-node version of the `call` function.
-
-- `abcast(Nodes, Name, Msg)` and `abcast(Name, Msg)`: An asynchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `Nodes`.
-
-- `sbcast(Nodes, Name, Msg)` and `sbcast(Name, Msg)`: A synchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `Nodes`. Returns the nodes in which the named process is alive and the nodes in which it isn't.
-
-- `eval_everywhere(Module, Function, Args)` and `eval_everywhere(Nodes, Module, Function, Args)`: Multi-node version of the `cast` function.
-
-### Module version control
-
-`gen_rpc` supports executing RPC calls on remote nodes that are running only specific module versions. To leverage that feature, in place of `Module` in the section above, use `{Module, Version}`. If the remote `module` is not on the version requested a `{badrpc,incompatible]` will be returned.
 
 ## Rationale
 

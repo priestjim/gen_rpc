@@ -2,4 +2,4 @@
 
 This is a list of pending features or code technical debt for `gen_rpc`:
 
-- Implement per-id-and-node tuple connection sharing to spread workload on multiple mailboxes per node
+- Implement `net_kernel:monitor_nodes/2` functionality

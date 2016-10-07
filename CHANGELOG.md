@@ -2,6 +2,13 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
+## 2.1.0
+
+- Support multiple connections per node using aribtrary keys.
+
+- Add support for Linux and Darwin/macOS custom keepalive settings to detect socket issues
+  faster.
+
 ## 2.0.1
 
 - Support external node driver/port discovery.

@@ -69,7 +69,17 @@
         %% Inactivity timeout for server gen_server
         {server_inactivity_timeout, infinity},
         %% Orphan async call process timeout
-        {async_call_inactivity_timeout, infinity}
+        {async_call_inactivity_timeout, infinity},
+        %% Socket keepalive configuration
+        %% Higher values for more resilient links/nodes
+        %% Lower values for more volatile installations
+        %% Seconds idle after the last packet of data sent
+        %% to start sending keepalive probes
+        {socket_keepalive_idle, 5},
+        %% Seconds between probes
+        {socket_keepalive_interval, 5},
+        %% Probes lost to close the connection
+        {socket_keepalive_count, 2}
     ]},
     {modules, []}]
 }.

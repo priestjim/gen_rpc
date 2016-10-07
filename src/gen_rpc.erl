@@ -7,6 +7,9 @@
 -module(gen_rpc).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
+%%% Include helpful guard macros
+-include("types.hrl").
+
 %%% Library interface
 -export([call/3, call/4, call/5, call/6]).
 
@@ -36,52 +39,52 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
--spec async_call(node(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F) ->
     gen_rpc_client:async_call(Node, M, F).
 
--spec async_call(node(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 async_call(Node, M, F, A) ->
     gen_rpc_client:async_call(Node, M, F, A).
 
--spec call(node(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
 
--spec call(node(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A) ->
     gen_rpc_client:call(Node, M, F, A).
 
--spec call(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) ->
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) ->
     term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO).
 
--spec call(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
--spec cast(node(), atom() | tuple(), atom() | function()) -> true.
+-spec cast(node_or_tuple(), atom() | tuple(), atom() | function()) -> true.
 cast(Node, M, F) ->
     gen_rpc_client:cast(Node, M, F).
 
--spec cast(node(), atom() | tuple(), atom() | function(), list()) -> true.
+-spec cast(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> true.
 cast(Node, M, F, A) ->
     gen_rpc_client:cast(Node, M, F, A).
 
--spec cast(node(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> true.
+-spec cast(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> true.
 cast(Node, M, F, A, SendTO) ->
     gen_rpc_client:cast(Node, M, F, A, SendTO).
 
--spec eval_everywhere([node()], atom() | tuple(), atom() | function()) -> abcast.
+-spec eval_everywhere([node_or_tuple()], atom() | tuple(), atom() | function()) -> abcast.
 eval_everywhere(Nodes, M, F) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F).
 
--spec eval_everywhere([node()], atom() | tuple(), atom() | function(), list()) -> abcast.
+-spec eval_everywhere([node_or_tuple()], atom() | tuple(), atom() | function(), list()) -> abcast.
 eval_everywhere(Nodes, M, F, A) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A).
 
--spec eval_everywhere([node()], atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> abcast.
+-spec eval_everywhere([node_or_tuple()], atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> abcast.
 eval_everywhere(Nodes, M, F, A, SendTO) ->
     gen_rpc_client:eval_everywhere(Nodes, M, F, A, SendTO).
 
@@ -127,4 +130,4 @@ sbcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
 
 -spec nodes() -> list().
 nodes() ->
-    gen_rpc_client_sup:children_names().
+    gen_rpc_client_sup:nodes().

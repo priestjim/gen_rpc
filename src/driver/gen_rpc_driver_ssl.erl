@@ -18,6 +18,8 @@
 -include("app.hrl").
 %%% Include SSL macros
 -include("ssl.hrl").
+%%% Include TCP macros
+-include("tcp.hrl").
 %%% Include helpful guard macros
 -include("guards.hrl").
 
@@ -201,6 +203,7 @@ set_send_timeout(Socket, SendTO) when is_tuple(Socket) ->
 
 -spec set_acceptor_opts(ssl:sslsocket()) -> ok.
 set_acceptor_opts(Socket) when is_tuple(Socket) ->
+    ok = set_socket_keepalive(os:type(), Socket),
     ok = ssl:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
     ok.
 
@@ -222,3 +225,26 @@ merge_ssl_options(server, _Node) ->
 extract_peer_certificate(Socket) ->
     {ok, Cert} = ssl:peercert(Socket),
     public_key:pkix_decode_cert(Cert, otp).
+
+set_socket_keepalive({unix, darwin}, Socket) ->
+    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
+    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
+    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
+    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_SO_KEEPALIVE, <<1:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
+    ok;
+
+set_socket_keepalive({unix, linux}, Socket) ->
+    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
+    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
+    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
+    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_SO_KEEPALIVE, <<1:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
+    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
+    ok;
+
+set_socket_keepalive(_Unsupported, _Socket) ->
+    ok.

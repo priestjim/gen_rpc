@@ -321,6 +321,9 @@ rpc_module_blacklist(_Config) ->
 driver_stub(_Config) ->
     ok = gen_rpc_driver:stub().
 
+client_config_stub(_Config) ->
+    ok = gen_rpc_client_config:stub().
+
 %%% ===================================================
 %%% Auxiliary functions for test cases
 %%% ===================================================
