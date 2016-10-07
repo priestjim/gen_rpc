@@ -143,16 +143,18 @@ get_client_driver_options(Driver) when is_atom(Driver) ->
 get_client_config_per_node(Node) when is_atom(Node) ->
     {ok, NodeConfig} = application:get_env(?APP, client_config_per_node),
     case NodeConfig of
-        {M, F} ->
-            try
-                {Driver, Port} = M:F(Node),
-                {Driver, Port}
+        {external, Module} ->
+            try Module:get_config(Node) of
+                {Driver, Port} when is_atom(Driver), is_integer(Port), Port > 0 ->
+                    {Driver, Port};
+                {error, Reason} ->
+                    {error, Reason}
             catch
                 Class:Reason ->
                     {error, {Class,Reason}}
             end;
-        NodeConfig ->
-            get_client_config_from_map(Node, NodeConfig)
+        {internal, NodeMap} ->
+            get_client_config_from_map(Node, NodeMap)
     end.
 
 -spec get_connect_timeout() -> timeout().

@@ -148,7 +148,7 @@ get_test_functions(Module) ->
                                    ({interleaved_call_proc,_}) -> false;
                                    ({interleaved_call_executor,_}) -> false;
                                    ({interleaved_call_loop,_}) -> false;
-                                   ({external_client_config_fun,_}) -> false;
+                                   ({get_config,_}) -> false;
                                    %% Multi RPC
                                    ({spawn_listener,_}) -> false;
                                    ({spawn_listener2,_}) -> false;

@@ -79,7 +79,7 @@ init_per_testcase(external_client_config_source, Config) ->
     %% No need to restore original setting with an
     %% end_per_testcase since this setting gets overwritten
     %% upon every application restart
-    ok = application:set_env(?APP, client_config_per_node, {?MODULE, external_client_config_fun}),
+    ok = application:set_env(?APP, client_config_per_node, {external, ?MODULE}),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
@@ -331,6 +331,6 @@ interleaved_call_executor(Num) when is_integer(Num) ->
 %% the external client config source
 %% This should force communication with the slave
 %% over TCP even on the SSL group
-external_client_config_fun(?SLAVE) ->
+get_config(?SLAVE) ->
   {tcp, ?SLAVE_PORT}.
 

@@ -118,6 +118,12 @@ Finally, start a couple of nodes to test it out:
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
 
+## External Source Support
+
+`gen_rpc` can call an external module to provide driver/port mappings in case you want to use an external discovery service like `etcd`
+for node configuration management. The module should implement the `gen_rpc_external_source` behaviour which takes the `Node` as an argument and should return either `{Driver, Port}` (`Driver` being `tcp` or `ssl` and `Port` being the port the remote node's
+`gen_rpc`'s driver is listening in) or `{error, Reason}` (if the service is unavailable). To set it, change `client_config_per_node` from the default of `{internal, #{}}` to `{external, ModuleName}` where `ModuleName` is the module that implements the `gen_rpc_external_source` behaviour.
+
 ## Logging
 
 `gen_rpc` uses [hut](https://github.com/tolbrino/hut) for logging. This allows the developer to integrate the logging library of their choice by providing the appropriate definition in their `rebar.config`. The default logging facility of `hut` is SASL.

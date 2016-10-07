@@ -22,10 +22,10 @@
         {sasl, error_logger_mf_dir, false},
         {?APP, tcp_server_port, false},
         {?APP, ssl_server_port, false},
-        {?APP, client_config_per_node, #{
+        {?APP, client_config_per_node, {internal, #{
             ?MASTER => ?MASTER_PORT,
             ?SLAVE => ?SLAVE_PORT
-        }},
+        }}},
         {?APP, connect_timeout, 500},
         {?APP, send_timeout, 500},
         {lager, log_root, "./log"},
