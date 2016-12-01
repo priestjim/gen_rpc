@@ -316,6 +316,8 @@ rpc_module_whitelist(_Config) ->
 rpc_module_blacklist(_Config) ->
     {badrpc, unauthorized} = gen_rpc:call(?MASTER, os, timestamp),
     {badrpc, unauthorized} = gen_rpc:call(?MASTER, erlang, node),
+    abcast = gen_rpc:abcast([?MASTER], init, {stop, stop}),
+    {[], [?MASTER]} = gen_rpc:sbcast([?MASTER], init, {stop, stop}),
     60000 = gen_rpc:call(?MASTER, timer, seconds, [60]).
 
 driver_stub(_Config) ->

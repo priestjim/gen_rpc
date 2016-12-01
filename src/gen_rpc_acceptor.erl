@@ -157,17 +157,30 @@ waiting_for_data(info, {Driver,Socket,Data},
             ok = DriverMod:activate_socket(Socket),
             {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
         {abcast, Name, Msg} ->
-            ?log(debug, "event=abcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
-            Msg = erlang:send(Name, Msg),
+            _Result = case check_if_module_allowed(erlang, Control, List) of
+                true ->
+                    ?log(debug, "event=abcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
+                    Msg = erlang:send(Name, Msg);
+                false ->
+                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), Control, abcast])
+                end,
             ok = DriverMod:activate_socket(Socket),
             {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
         {sbcast, Name, Msg, Caller} ->
-            ?log(debug, "event=sbcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
-            Reply = case erlang:whereis(Name) of
-                undefined -> error;
-                Pid -> Msg = erlang:send(Pid, Msg), success
+            Reply = case check_if_module_allowed(erlang, Control, List) of
+                true ->
+                    ?log(debug, "event=sbcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
+                    case erlang:whereis(Name) of
+                        undefined -> error;
+                        Pid -> Msg = erlang:send(Pid, Msg), success
+                    end;
+                false ->
+                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), Control, sbcast]),
+                     error
             end,
             ok = DriverMod:activate_socket(Socket),
             waiting_for_data(info, {sbcast, Caller, Reply}, State);
