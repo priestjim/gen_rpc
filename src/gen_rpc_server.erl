@@ -51,6 +51,7 @@ stop(Driver) when is_atom(Driver) ->
 %%% ===================================================
 init({Driver}) ->
     ok = gen_rpc_helper:set_optimal_process_flags(),
+    _ = erlang:process_flag(trap_exit, false),
     {DriverMod, DriverPort, _ClosedMsg, _ErrorMsg} = gen_rpc_helper:get_server_driver_options(Driver),
     case DriverMod:listen(DriverPort) of
         {ok, Socket} ->
