@@ -28,7 +28,7 @@
         get_peer/1,
         send/2,
         activate_socket/1,
-        authenticate_server/1,
+        authenticate_to_server/2,
         authenticate_client/3,
         copy_sock_opts/2,
         set_controlling_process/2,
@@ -57,7 +57,7 @@ connect(Node, Port) when is_atom(Node) ->
 listen(Port) when is_integer(Port) ->
     gen_tcp:listen(Port, ?TCP_DEFAULT_OPTS).
 
--spec accept(port()) -> ok | {error, term()}.
+-spec accept(port()) -> {ok, inet:socket()} | {error, term()}.
 accept(Socket) when is_port(Socket) ->
     gen_tcp:accept(Socket, infinity).
 
@@ -81,10 +81,10 @@ send(Socket, Data) when is_port(Socket), is_binary(Data) ->
     end.
 
 %% Authenticate to a server
--spec authenticate_server(port()) -> ok | {error, {badtcp | badrpc, term()}}.
-authenticate_server(Socket) ->
-    Cookie = erlang:get_cookie(),
-    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, Cookie}),
+-spec authenticate_to_server(atom(), port()) -> ok | {error, {badtcp | badrpc, term()}}.
+authenticate_to_server(Node, Socket) ->
+    Cookie = gen_rpc_helper:get_cookie_per_node(Node),
+    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, Node, Cookie}),
     SendTO = gen_rpc_helper:get_send_timeout(undefined),
     RecvTO = gen_rpc_helper:get_call_receive_timeout(undefined),
     ok = set_send_timeout(Socket, SendTO),
@@ -124,35 +124,38 @@ authenticate_server(Socket) ->
 %% Authenticate a connected client
 -spec authenticate_client(port(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_client(Socket, Peer, Data) ->
-    Cookie = erlang:get_cookie(),
     try erlang:binary_to_term(Data) of
-        {gen_rpc_authenticate_connection, Cookie} ->
-            Packet = erlang:term_to_binary(gen_rpc_connection_authenticated),
-            Result = case send(Socket, Packet) of
-                {error, Reason} ->
-                    ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]),
-                    {error, {badtcp,Reason}};
-                ok ->
-                    ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-                    ok = activate_socket(Socket),
-                    ok
-            end,
-            Result;
-        {gen_rpc_authenticate_connection, _IncorrectCookie} ->
-            ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\"",
-                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-            Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
-            ok = case send(Socket, Packet) of
-                {error, Reason} ->
-                    ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]);
-                ok ->
-                    ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)])
-            end,
-            {error, {badrpc,invalid_cookie}};
+        {gen_rpc_authenticate_connection, Node, Cookie} when is_atom(Node), is_atom(Cookie) ->
+            ValidCookie = gen_rpc_helper:get_cookie_per_node(Node),
+            if
+                ValidCookie == Cookie ->
+                    Packet = erlang:term_to_binary(gen_rpc_connection_authenticated),
+                    Result = case send(Socket, Packet) of
+                        {error, Reason} ->
+                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]),
+                            {error, {badtcp,Reason}};
+                        ok ->
+                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
+                            ok = activate_socket(Socket),
+                            ok
+                    end,
+                    Result;
+                true ->
+                    ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
+                    Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
+                    ok = case send(Socket, Packet) of
+                        {error, Reason} ->
+                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]);
+                        ok ->
+                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node])
+                    end,
+                    {error, {badrpc,invalid_cookie}}
+            end;
         OtherData ->
             ?log(debug, "event=erroneous_data_received socket=\"~s\" peer=\"~s\" data=\"~p\"",
                  [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),

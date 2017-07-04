@@ -13,7 +13,7 @@
 
 To build this project you need to have the following:
 
-* **Erlang/OTP** >= 19.1
+* **Erlang/OTP** >= 22.2
 
 * **git** >= 1.7
 
@@ -35,7 +35,7 @@ Or if you're using `hex.pm`/`rebar3`:
 
 ```erlang
 {deps [
-    {gen_rpc, "~> 2.0"}
+    {gen_rpc, "~> 3.0"}
 ]}.
 ```
 
@@ -45,7 +45,7 @@ Or if you're using Elixir/Mix:
 def project do
   [
     deps: [
-      {:gen_rpc, "~> 2.0"}
+      {:gen_rpc, "~> 3.0"}
     ]
   ]
 ```
@@ -93,6 +93,8 @@ For more information on what the functions below do, run `erl -man rpc`.
 - `sbcast(NodesOrNodesWithKeys, Name, Msg)` and `sbcast(Name, Msg)`: A synchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `NodesOrNodesWithKeys`. Returns the nodes in which the named process is alive and the nodes in which it isn't.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
+
+- `nodes()`: Returns a list of all the nodes contacted.
 
 ### Per-Key Sharding
 
@@ -146,17 +148,20 @@ and pass them as the node list in the multi-node function.
 
 - `sbcast_receive_timeout`: Default timeout for the reception of a response in an `sbcast` in **milliseconds**.
 
-- `client_inactivity_timeout`: Inactivity period in **milliseconds** after which a client connection to a node will be closed (and hence have the TCP file descriptor freed).
-
 - `server_inactivity_timeout`: Inactivity period in **milliseconds** after which a server port will be closed (and hence have the TCP file descriptor freed).
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
 
-- `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers).
+- `client_keepalive_interval`: Client keepalive interval in **millseconds**.
 
-- `socket_keepalive_interval`: Seconds between keepalive probes.
+- `client_keepalive_inactivity_count`: Multiple of `client_keepalive_interval` after which a client connection to a node will be closed (and hence have the TCP file descriptor freed). For example,
+  if `client_keepalive_interval` is `10000` and `client_keepalive_inactivity_count` is `6`, the connection will close in **1 minute**.
+-
+- `socket_keepalive_count`: Probes lost to consider the socket closed
 
-- `socket_keepalive_count`: Probs lost to consider the socket closed
+- `cookie_per_node`: A tuple of `{internal, #{ Node::atom() => Cookie()::atom() }}` with the second element being a map of `Node => Cookie` (both atoms) mappings. To delegate cookie resolution to an external module, set the value to
+  `{external, moduleName}`. `gen_rpc` will then call `moduleName:get_cookie(Node)` to resolve the cookie, and expect either an atom (the cookie for that node) or an error tuple (`{error, Reason}`). The module call is enclosed in
+  a try-catch clause to protect the client from external crashes.
 
 ## Logging
 
@@ -318,6 +323,8 @@ This project is published and distributed under the [Apache License](LICENSE).
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md)
 
-### Contributors:
+### Contributors
 
 - [Edward Tsang](https://github.com/linearregression)
+- [getong](https://github.com/getong)
+- [JianBo He](https://github.com/HJianBo)

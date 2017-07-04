@@ -10,11 +10,11 @@
 
 -callback listen(inet:port_number()) -> {ok, term()} | {error, term()}.
 
--callback accept(term()) -> ok | {error, term()}.
+-callback accept(term()) -> {ok, inet:socket() | ssl:sslsocket()} | {error, term()}.
 
 -callback activate_socket(term()) -> ok.
 
--callback authenticate_server(term()) -> ok | {error, {badtcp | badrpc, term()}}.
+-callback authenticate_to_server(atom(), term()) -> ok | {error, {badtcp | badrpc, term()}}.
 
 -callback authenticate_client(term(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 

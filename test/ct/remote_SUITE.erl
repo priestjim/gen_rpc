@@ -17,13 +17,13 @@
 %%% CT callback functions
 %%% ===================================================
 all() ->
-    [{group, tcp}, {group, ssl}].
+    [{group, tcp}, {group, ssl}, {group, ec_ssl}].
     % [{group, tcp}].
 
 groups() ->
     Cases = gen_rpc_test_helper:get_test_functions(?MODULE),
     % [{tcp, [], Cases}].
-    [{tcp, [], Cases}, {ssl, [], Cases}].
+    [{tcp, [], Cases}, {ssl, [], Cases}, {ec_ssl, [], Cases}].
 
 init_per_group(Group, Config) ->
     % Our group name is the name of the driver
@@ -80,6 +80,15 @@ init_per_testcase(external_client_config_source, Config) ->
     %% end_per_testcase since this setting gets overwritten
     %% upon every application restart
     ok = application:set_env(?APP, client_config_per_node, {external, ?MODULE}),
+    Config;
+
+init_per_testcase(wrong_cookie, Config) ->
+    ok = gen_rpc_test_helper:restart_application(),
+    Driver = gen_rpc_test_helper:get_driver_from_config(Config),
+    ok = gen_rpc_test_helper:start_master(Driver),
+    ok = gen_rpc_test_helper:start_slave(Driver),
+    ok = application:set_env(?APP, cookie_per_node, {internal, #{}}),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, cookie_per_node, {internal, #{}}]),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
@@ -333,4 +342,3 @@ interleaved_call_executor(Num) when is_integer(Num) ->
 %% over TCP even on the SSL group
 get_config(?SLAVE) ->
   {tcp, ?SLAVE_PORT}.
-

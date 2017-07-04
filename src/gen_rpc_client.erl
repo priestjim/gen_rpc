@@ -243,7 +243,7 @@ init({Node}) ->
             ?log(info, "event=initializing_client driver=~s node=\"~s\" port=~B", [Driver, Node, Port]),
             case DriverMod:connect(Node, Port) of
                 {ok, Socket} ->
-                    case DriverMod:authenticate_server(Socket) of
+                    case DriverMod:authenticate_to_server(Node, Socket) of
                         ok ->
                             {ok, #state{socket=Socket,
                                         driver=Driver,
@@ -388,8 +388,9 @@ send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
             {stop, Reason, State};
         ok ->
-            ok = if Activate =:= true -> DriverMod:activate_socket(Socket);
-               true -> ok
+            ok = if
+                Activate =:= true -> DriverMod:activate_socket(Socket);
+                true -> ok
             end,
             ?log(debug, "message=cast event=transmission_succeeded driver=~s socket=\"~s\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),

@@ -1,4 +1,3 @@
-.rebar3
 _*
 .eunit
 *.o
@@ -11,10 +10,10 @@ _*
 .erlang.cookie
 .DS_Store
 rebar.lock
+rebar3
 ebin
 log
 erl_crash.dump
-.rebar
 _rel
 _deps
 _plugins
@@ -22,5 +21,6 @@ _tdeps
 _plt
 logs
 _build
-rebar3
+rebar
 *.crashdump
+.exrc

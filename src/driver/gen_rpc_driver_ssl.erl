@@ -30,7 +30,7 @@
         get_peer/1,
         send/2,
         activate_socket/1,
-        authenticate_server/1,
+        authenticate_to_server/2,
         authenticate_client/3,
         copy_sock_opts/2,
         set_controlling_process/2,
@@ -62,14 +62,13 @@ listen(Port) when is_integer(Port) ->
     SslOpts = merge_ssl_options(server, undefined),
     ssl:listen(Port, SslOpts).
 
--spec accept(ssl:sslsocket()) -> ok | {error, term()}.
+-spec accept(ssl:sslsocket()) -> {ok, ssl:sslsocket()} | {error, term()}.
 accept(Socket) when is_tuple(Socket) ->
     {ok, TSocket} = ssl:transport_accept(Socket, infinity),
-    case ssl:ssl_accept(TSocket) of
-        ok ->
-            {ok, TSocket};
-        Error ->
-            Error
+    case ssl:handshake(TSocket) of
+        {ok, SslSocket} ->
+            {ok, SslSocket};
+        Error -> Error
     end.
 
 -spec send(ssl:sslsocket(), binary()) -> ok | {error, term()}.
@@ -92,11 +91,10 @@ activate_socket(Socket) when is_tuple(Socket) ->
     ok.
 
 %% Authenticate to a server
--spec authenticate_server(ssl:sslsocket()) -> ok | {error, {badtcp | badrpc, term()}}.
-authenticate_server(Socket) ->
-    Cookie = erlang:get_cookie(),
-    NodeStr = erlang:atom_to_list(node()),
-    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, NodeStr, Cookie}),
+-spec authenticate_to_server(atom(), ssl:sslsocket()) -> ok | {error, {badtcp | badrpc, term()}}.
+authenticate_to_server(Node, Socket) ->
+    Cookie = gen_rpc_helper:get_cookie_per_node(Node),
+    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, node(), Cookie}),
     SendTO = gen_rpc_helper:get_send_timeout(undefined),
     RecvTO = gen_rpc_helper:get_call_receive_timeout(undefined),
     ok = set_send_timeout(Socket, SendTO),
@@ -135,45 +133,49 @@ authenticate_server(Socket) ->
 %% Authenticate a connected client
 -spec authenticate_client(ssl:sslsocket(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_client(Socket, Peer, Data) ->
-    Cookie = erlang:get_cookie(),
     try erlang:binary_to_term(Data) of
-        {gen_rpc_authenticate_connection, Node, Cookie} ->
-            PeerCert = extract_peer_certificate(Socket),
-            {SocketResponse, AuthResult} = case ssl_verify_hostname:verify_cert_hostname(PeerCert, Node) of
-                {fail, AuthReason} ->
-                    ?log(error, "event=node_certificate_mismatch socket=\"~s\" peer=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), AuthReason]),
-                    {{gen_rpc_connection_rejected,node_certificate_mismatch}, {error,{badrpc,node_certificate_mismatch}}};
-                {valid, _Hostname} ->
-                    ?log(debug, "event=certificate_validated socket=\"~s\" peer=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-                    {gen_rpc_connection_authenticated, ok}
-            end,
-            Packet = erlang:term_to_binary(SocketResponse),
-            case send(Socket, Packet) of
-                {error, Reason} ->
-                    ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]),
-                    {error, {badtcp,Reason}};
-                ok ->
-                    ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-                    ok = activate_socket(Socket),
-                    AuthResult
+        {gen_rpc_authenticate_connection, Node, Cookie} when is_atom(Node), is_atom(Cookie) ->
+            ValidCookie = gen_rpc_helper:get_cookie_per_node(Node),
+            if
+                ValidCookie == Cookie ->
+                    PeerCert = extract_peer_certificate(Socket),
+                    NodeStr = gen_rpc_helper:to_string(Node),
+                    {SocketResponse, AuthResult} = case ssl_verify_hostname:verify_cert_hostname(PeerCert, NodeStr) of
+                        {fail, AuthReason} ->
+                            ?log(error, "event=node_certificate_mismatch socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, AuthReason]),
+                            {{gen_rpc_connection_rejected,node_certificate_mismatch}, {error,{badrpc,node_certificate_mismatch}}};
+                        {valid, _Hostname} ->
+                            ?log(debug, "event=certificate_validated socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
+                            {gen_rpc_connection_authenticated, ok}
+                    end,
+                    Packet = erlang:term_to_binary(SocketResponse),
+                    case send(Socket, Packet) of
+                        {error, Reason} ->
+                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]),
+                            {error, {badtcp,Reason}};
+                        ok ->
+                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
+                            ok = activate_socket(Socket),
+                            AuthResult
+                    end;
+                true ->
+                    ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
+                    Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
+                    ok = case send(Socket, Packet) of
+                        {error, Reason} ->
+                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]);
+                        ok ->
+                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
+                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node])
+                    end,
+                    {error, {badrpc,invalid_cookie}}
             end;
-        {gen_rpc_authenticate_connection, _Node, _IncorrectCookie} ->
-            ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\"",
-                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-            Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
-            ok = case send(Socket, Packet) of
-                {error, Reason} ->
-                    ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]);
-                ok ->
-                    ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)])
-            end,
-            {error, {badrpc,invalid_cookie}};
         OtherData ->
             ?log(debug, "event=erroneous_data_received socket=\"~s\" peer=\"~s\" data=\"~p\"",
                  [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),
@@ -212,7 +214,7 @@ set_acceptor_opts(Socket) when is_tuple(Socket) ->
 %%% ===================================================
 merge_ssl_options(client, Node) ->
     {ok, ExtraOpts} = application:get_env(?APP, ssl_client_options),
-    NodeStr = atom_to_list(Node),
+    NodeStr = gen_rpc_helper:to_string(Node),
     DefaultOpts = lists:append(?SSL_DEFAULT_COMMON_OPTS, ?SSL_DEFAULT_CLIENT_OPTS),
     VerifyOpts = [{verify_fun, {fun ssl_verify_hostname:verify_fun/3,[{check_hostname,NodeStr}]}}|DefaultOpts],
     gen_rpc_helper:merge_sockopt_lists(ExtraOpts, VerifyOpts);

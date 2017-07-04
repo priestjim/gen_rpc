@@ -1,14 +1,14 @@
 sudo: false
+services:
+  - docker
 language: erlang
 otp_release:
-  - "19.1"
-  - "19.2"
+  - "22.2"
 cache:
   directories:
-  - $HOME/otp/19.1
-  - $HOME/otp/19.2
-  - $HOME/.cache/rebar3
-  - _plt
+    - $HOME/otp/22.2
+    - $HOME/.cache/rebar3
+    - _plt
 install: "true"
 script: "make travis"
 branches:
@@ -17,5 +17,4 @@ branches:
     - develop
 notifications:
   email:
-    - pj@ezgr.net
-
+    - pj+travis@ezgr.net

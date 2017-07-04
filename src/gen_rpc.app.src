@@ -40,7 +40,7 @@
         %% Fine-graned driver/port control
         %% for each outgoing client connection
         %% The internal implementation expects
-        %% {internal, Map} whereh Map is a map of
+        %% {internal, Map} where Map is a map of
         %% node_name => {driver, port} or node_name => driver
         %% which uses the default port for the specified client driver
         %% If you have an external service that allows discovery
@@ -64,12 +64,12 @@
         {call_receive_timeout, 15000},
         %% Default receive timeout for sbcast
         {sbcast_receive_timeout, 15000},
-        %% Inactivity timeout for client gen_server
-        {client_inactivity_timeout, infinity},
-        %% Inactivity timeout for server gen_server
-        {server_inactivity_timeout, infinity},
-        %% Orphan async call process timeout
-        {async_call_inactivity_timeout, infinity},
+        %% Client-side keepalive ping interval
+        {client_keepalive_interval, 10000},
+        %% Amount of keepalive intervals elapsed
+        %% after which the connection will be considered
+        %% idle and will be closed
+        {client_keepalive_inactivity_count, infinity},
         %% Socket keepalive configuration
         %% Higher values for more resilient links/nodes
         %% Lower values for more volatile installations
@@ -79,7 +79,20 @@
         %% Seconds between probes
         {socket_keepalive_interval, 5},
         %% Probes lost to close the connection
-        {socket_keepalive_count, 2}
+        {socket_keepalive_count, 2},
+        %% Inactivity timeout for client gen_server
+        %% Inactivity timeout for server gen_server
+        {server_inactivity_timeout, infinity},
+        %% Orphan async call process timeout
+        {async_call_inactivity_timeout, infinity},
+        %% Cookie per node configuration
+        %% Set a separate cookie per node by setting
+        %% {internal, #{ Node::atom() => Cookie()::atom() }}
+        %% If you have an external service that can validate an incoming
+        %% client has provided the correct cookie / send the correct cookie per
+        %% node to the server, you can change this setting to
+        %% {external, Module}
+        {cookie_per_node, {internal, #{}}}
     ]},
     {modules, []}]
 }.

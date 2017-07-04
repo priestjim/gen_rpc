@@ -2,4 +2,5 @@
 
 This is a list of pending features or code technical debt for `gen_rpc`:
 
-- Implement `net_kernel:monitor_nodes/2` functionality
+- Alternative Distribution Driver that transparently uses gen_rpc
+- Provide a monitor nodes facility

@@ -4,13 +4,16 @@
 # Used to run automated integration tests using Docker
 #
 
+set -euo pipefail
+
+OTP_RELEASE=$(cat $(pwd)/../../rebar.config | grep minimum_otp_vsn | cut -d\" -f2)
 NUM_OF_NODES=${1:-3}
 NODES=""
 
-start_node() {
+function start_node() {
 	export NAME=gen_rpc_${1}
 	echo -n "Starting container ${NAME}: "
-	docker run -tid --privileged --name ${NAME} -P gen_rpc:integration
+	docker run -tid --privileged --name ${NAME} -v $(pwd)/../..:/gen_rpc -v gen_rpc_build:/gen_rpc/_build -v ~/.cache/rebar3:/root/.cache/rebar3 -P erlang:${OTP_RELEASE} /bin/bash
 	sleep 2
 	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' ${NAME})
 	export NODES="${IP}:${NODES}"
@@ -18,45 +21,40 @@ start_node() {
 	docker exec -ti ${NAME} bash -c 'mkdir -p /root/.cache'
 	docker exec -ti ${NAME} bash -c 'echo gen_rpc > ~/.erlang.cookie'
 	docker exec -ti ${NAME} bash -c 'chmod 600 ~/.erlang.cookie'
-	docker exec -ti ${NAME} bash -c 'rm -fr /gen_rpc/*'
-	docker cp ../../ ${NAME}:/
-	docker cp ~/.cache/rebar3 ${NAME}:/root/.cache/rebar3
 	docker exec -ti ${NAME} bash -c 'cd /gen_rpc && make'
 	docker exec -ti -d ${NAME} bash -c "cd /gen_rpc && ./rebar3 as dev do shell --name gen_rpc@${IP}"
 	return $?
 }
 
-start_master() {
+function start_master() {
 	export NAME=gen_rpc_master
 	echo -n "Starting container ${NAME}: "
-	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc:integration
+	docker run -i -t -d --privileged --name ${NAME} -v $(pwd)/../..:/gen_rpc -v build:/gen_rpc/_build -v ~/.cache/rebar3:/root/.cache/rebar3 -P erlang:${OTP_RELEASE} /bin/bash
 	sleep 2
 	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' gen_rpc_master)
 	docker exec -d ${NAME} epmd -daemon
 	docker exec -ti ${NAME} bash -c 'mkdir -p /root/.cache'
 	docker exec -ti ${NAME} bash -c "echo gen_rpc > ~/.erlang.cookie"
 	docker exec -ti ${NAME} bash -c "chmod 600 ~/.erlang.cookie"
-	docker exec -ti ${NAME} bash -c "rm -fr /gen_rpc/*"
-	docker cp ../../ ${NAME}:/
-	docker cp ~/.cache/rebar3 ${NAME}:/root/.cache/rebar3
 	docker exec -ti ${NAME} bash -c "cd /gen_rpc && make"
 	echo Starting integration tests on container ${NAME}
 	docker exec -ti gen_rpc_master bash -c "export NODES=${NODES} NODE=gen_rpc@${IP} && cd /gen_rpc && make && ./rebar3 as test do ct --suite test/ct/integration_SUITE"
 }
 
-destroy() {
+function destroy() {
 	# Destroy slaves
 	for NODE in $(seq 1 ${NUM_OF_NODES}); do
 		export NAME=gen_rpc_${NODE}
 		echo -n "Destroying container: "
-		docker rm -f ${NAME} 2> /dev/null
+		docker rm -f -v ${NAME} 2> /dev/null
 	done
 	# Destroy master
 	echo -n "Destroying container: "
-	docker rm -f gen_rpc_master 2> /dev/null
+	docker rm -f -v gen_rpc_master 2> /dev/null
 }
+trap destroy ERR SIGINT SIGTERM
 
-run() {
+function run() {
 	echo Running integration tests with ${NUM_OF_NODES} nodes
 	for NODE in $(seq 1 ${NUM_OF_NODES}); do
 		start_node $NODE
