@@ -30,6 +30,8 @@
                   "ECDH-ECDSA-AES256-SHA","ECDH-RSA-AES256-SHA","AES256-SHA","ECDHE-ECDSA-AES128-SHA",
                   "ECDHE-RSA-AES128-SHA","DHE-DSS-AES128-SHA","ECDH-ECDSA-AES128-SHA","ECDH-RSA-AES128-SHA","AES128-SHA"]},
         {secure_renegotiate,true},
+        {honor_ecc_order,true},
+        {honor_cipher_order,true},
         {reuse_sessions,true},
         {versions,['tlsv1.2','tlsv1.1']},
         {verify,verify_peer},
@@ -38,7 +40,6 @@
 
 -define(SSL_DEFAULT_SERVER_OPTS, [{fail_if_no_peer_cert,true},
         {log_alert,false},
-        {honor_cipher_order,true},
         {client_renegotiation,true}]).
 
 -define(SSL_DEFAULT_CLIENT_OPTS, [{server_name_indication,disable},

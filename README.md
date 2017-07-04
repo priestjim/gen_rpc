@@ -94,6 +94,8 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
 
+- `monitor_node(Node, Flag)` and `monitor_node(Node, Flag, MessageType)`: Sends messages of node connects and disconnects to the subscribed process. Set `MessageType` to `gen_server` to send a `gen_server:cast` as a state change message, `gen_fsm` to send a `gen_fsm:send_all_state_event` as a state change message or `simple` to send a simple message upon node state change. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process.
+
 ### Per-Key Sharding
 
 `gen_rpc` supports multiple outgoing connections per node using a key of arbitrary type to differentiate between connections.

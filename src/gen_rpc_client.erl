@@ -245,6 +245,7 @@ init({Node}) ->
                 {ok, Socket} ->
                     case DriverMod:authenticate_server(Socket) of
                         ok ->
+                            ok = gen_rpc_monitor:register_node(Node, self()),
                             {ok, #state{socket=Socket,
                                         driver=Driver,
                                         driver_mod=DriverMod,

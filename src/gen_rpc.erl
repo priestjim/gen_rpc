@@ -8,6 +8,8 @@
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
 %%% Include helpful guard macros
+-include("guards.hrl").
+%%% Include helpful types
 -include("types.hrl").
 
 %%% Library interface
@@ -32,7 +34,7 @@
 -export([sbcast/2, sbcast/3]).
 
 %% Misc functions
--export([nodes/0]).
+-export([nodes/0, monitor_node/2]).
 
 %%% ===================================================
 %%% Library interface
@@ -113,21 +115,25 @@ multicall(Nodes, M, F, A, Timeout) ->
     gen_rpc_client:multicall(Nodes, M, F, A, Timeout).
 
 -spec abcast(atom(), term()) -> abcast.
-abcast(Name, Msg) when is_atom(Name) ->
+abcast(Name, Msg) ->
     gen_rpc_client:abcast(Name, Msg).
 
 -spec abcast(list(), atom(), term()) -> abcast.
-abcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
+abcast(Nodes, Name, Msg) ->
     gen_rpc_client:abcast(Nodes, Name, Msg).
 
 -spec sbcast(atom(), term()) -> {list(), list()}.
-sbcast(Name, Msg) when is_atom(Name) ->
+sbcast(Name, Msg) ->
     gen_rpc_client:sbcast(Name, Msg).
 
 -spec sbcast(list(), atom(), term()) -> {list(), list()}.
-sbcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
+sbcast(Nodes, Name, Msg) ->
     gen_rpc_client:sbcast(Nodes, Name, Msg).
 
 -spec nodes() -> list().
 nodes() ->
     gen_rpc_client_sup:nodes().
+
+-spec monitor_node(atom(), boolean()) -> true.
+monitor_node(Node, Flag) ->
+    gen_rpc_monitor:monitor_node(Node, Flag).

@@ -2,6 +2,10 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
+## 2.1.1
+
+- Support monitoring nodes
+
 ## 2.1.0
 
 - Support multiple connections per node using aribtrary keys.
