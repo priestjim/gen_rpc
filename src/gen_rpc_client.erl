@@ -26,7 +26,8 @@
         driver :: atom(),
         driver_mod :: atom(),
         driver_closed :: atom(),
-        driver_error :: atom()}).
+        driver_error :: atom(),
+        keepalive :: tuple()}).
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -246,11 +247,20 @@ init({Node}) ->
                     case DriverMod:authenticate_server(Socket) of
                         ok ->
                             ok = gen_rpc_monitor:register_node(Node, self()),
-                            {ok, #state{socket=Socket,
-                                        driver=Driver,
-                                        driver_mod=DriverMod,
-                                        driver_closed=DriverClosed,
-                                        driver_error=DriverError}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                            Interval = application:get_env(?APP, keepalive_interval, 60), % 60s
+                            KeepaliveFun = keepalive_probe(DriverMod, Socket),
+                            case gen_rpc_keepalive:start(KeepaliveFun, Interval, {keepalive, check}) of
+                                {ok, KeepAlive} ->
+                                    {ok, #state{socket=Socket,
+                                                driver=Driver,
+                                                driver_mod=DriverMod,
+                                                driver_closed=DriverClosed,
+                                                driver_error=DriverError,
+                                                keepalive=KeepAlive}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                                {error, Error} ->
+                                    ?log(error, "event=start_keepalive_failed driver=~p, reason=\"~p\"", [Driver, Error]),
+                                    {stop, Error}
+                            end;
                         {error, ReasonTuple} ->
                             ?log(error, "event=client_authentication_failed driver=~s reason=\"~p\"", [Driver, ReasonTuple]),
                             {stop, ReasonTuple}
@@ -290,6 +300,7 @@ handle_call(Msg, _Caller, #state{socket=Socket, driver=Driver} = State) ->
 %% This is the actual CAST handler for CAST
 handle_cast({{cast,_M,_F,_A} = PacketTuple, SendTO}, State) ->
     send_cast(PacketTuple, State, SendTO, false);
+    % send_cast(PacketTuple, State, SendTO, true);
 
 %% This is the actual CAST handler for ABCAST
 handle_cast({{abcast,_Name,_Msg} = PacketTuple, undefined}, State) ->
@@ -362,6 +373,18 @@ handle_info(timeout, #state{socket=Socket, driver=Driver} = State) ->
          [Driver, gen_rpc_helper:socket_to_string(Socket)]),
     {stop, normal, State};
 
+handle_info({keepalive, check}, #state{driver=Driver, keepalive=KeepAlive} = State) ->
+    case gen_rpc_keepalive:check(KeepAlive) of
+        {ok, KeepAlive1} ->
+            {noreply, State#state{keepalive=KeepAlive1}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+        {error, timeout} ->
+            send_ping(State#state{keepalive=gen_rpc_keepalive:resume(KeepAlive)});
+        {error, Reason} ->
+            ?log(error, "event=keepalive_check_failed driver=~p, reason=\"~p\" action=stopping",
+                [Driver, Reason]),
+            {stop, Reason, State}
+    end;
+
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, #state{socket=Socket, driver=Driver} = State) ->
     ?log(error, "event=uknown_message_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
@@ -372,12 +395,21 @@ handle_info(Msg, #state{socket=Socket, driver=Driver} = State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{keepalive=KeepAlive}) ->
+    gen_rpc_keepalive:cancel(KeepAlive),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+keepalive_probe(DriverMod, Socket) ->
+    fun() ->
+        case DriverMod:getstat(Socket, [recv_oct]) of
+            {ok, [{recv_oct, RecvOct}]} -> {ok, RecvOct};
+            {error, Error}              -> {error, Error}
+        end
+      end.
+
 send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State, SendTO, Activate) ->
     Packet = erlang:term_to_binary(PacketTuple),
     ?log(debug, "event=constructing_cast_term driver=~s socket=\"~s\" cast=\"~p\"",
@@ -389,11 +421,28 @@ send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
             {stop, Reason, State};
         ok ->
-            ok = if Activate =:= true -> DriverMod:activate_socket(Socket);
-               true -> ok
+            ok = if
+                Activate =:= true -> DriverMod:activate_socket(Socket);
+                true -> ok
             end,
             ?log(debug, "message=cast event=transmission_succeeded driver=~s socket=\"~s\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),
+            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
+    end.
+
+send_ping(#state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+    Packet = erlang:term_to_binary(ping),
+    ok = DriverMod:set_send_timeout(Socket, undefined),
+    case DriverMod:send(Socket, Packet) of
+        {error, Reason} ->
+            ?log(error, "message=ping event=transmission_failed driver=~s socket=\"~s\" reason=\"~p\"",
+                 [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
+            {stop, Reason, State};
+        ok ->
+            ?log(debug, "message=ping event=transmission_succeeded driver=~s socket=\"~s\"",
+                 [Driver, gen_rpc_helper:socket_to_string(Socket)]),
+            %% We should keep this flag same as previous
+            ok = DriverMod:activate_socket(Socket),
             {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end.
 

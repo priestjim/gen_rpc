@@ -33,7 +33,8 @@
         copy_sock_opts/2,
         set_controlling_process/2,
         set_send_timeout/2,
-        set_acceptor_opts/1]).
+        set_acceptor_opts/1,
+        getstat/2]).
 
 %%% ===================================================
 %%% Public API
@@ -57,7 +58,7 @@ connect(Node, Port) when is_atom(Node) ->
 listen(Port) when is_integer(Port) ->
     gen_tcp:listen(Port, ?TCP_DEFAULT_OPTS).
 
--spec accept(port()) -> ok | {error, term()}.
+-spec accept(port()) -> {ok, inet:socket()} | {error, term()}.
 accept(Socket) when is_port(Socket) ->
     gen_tcp:accept(Socket, infinity).
 
@@ -196,6 +197,10 @@ set_acceptor_opts(Socket) when is_port(Socket) ->
     ok = set_socket_keepalive(os:type(), Socket),
     ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}|?ACCEPTOR_DEFAULT_TCP_OPTS]),
     ok.
+
+-spec getstat(port(), list()) -> ok | {error, term()}.
+getstat(Socket, OptNames) ->
+    inet:getstat(Socket, OptNames).
 
 %%% ===================================================
 %%% Private functions

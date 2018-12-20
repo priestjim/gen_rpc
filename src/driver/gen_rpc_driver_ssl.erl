@@ -35,7 +35,8 @@
         copy_sock_opts/2,
         set_controlling_process/2,
         set_send_timeout/2,
-        set_acceptor_opts/1]).
+        set_acceptor_opts/1,
+        getstat/2]).
 
 %%% ===================================================
 %%% Public API
@@ -62,14 +63,13 @@ listen(Port) when is_integer(Port) ->
     SslOpts = merge_ssl_options(server, undefined),
     ssl:listen(Port, SslOpts).
 
--spec accept(ssl:sslsocket()) -> ok | {error, term()}.
+-spec accept(ssl:sslsocket()) -> {ok, ssl:sslsocket()} | {error, term()}.
 accept(Socket) when is_tuple(Socket) ->
     {ok, TSocket} = ssl:transport_accept(Socket, infinity),
-    case ssl:ssl_accept(TSocket) of
-        ok ->
-            {ok, TSocket};
-        Error ->
-            Error
+    case ssl:handshake(TSocket) of
+        {ok, SslSocket} ->
+            {ok, SslSocket};
+        Error -> Error
     end.
 
 -spec send(ssl:sslsocket(), binary()) -> ok | {error, term()}.
@@ -206,6 +206,10 @@ set_acceptor_opts(Socket) when is_tuple(Socket) ->
     ok = set_socket_keepalive(os:type(), Socket),
     ok = ssl:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
     ok.
+
+-spec getstat(ssl:sslsocket(), list()) -> ok | {error, any()}.
+getstat(Socket, OptNames) ->
+    ssl:getstat(Socket, OptNames).
 
 %%% ===================================================
 %%% Private functions

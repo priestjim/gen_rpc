@@ -10,7 +10,7 @@
 
 -callback listen(inet:port_number()) -> {ok, term()} | {error, term()}.
 
--callback accept(term()) -> ok | {error, term()}.
+-callback accept(term()) -> {ok, inet:socket() | ssl:sslsocket()} | {error, term()}.
 
 -callback activate_socket(term()) -> ok.
 
