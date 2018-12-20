@@ -42,6 +42,7 @@
 -define(DARWIN_TCP_KEEPCNT, 16#102). % number of keepalives before close
 
 -define(LINUX_SOL_SOCKET, 16#0001).
+-define(LINUX_SOL_TCP, 16#0006).
 -define(LINUX_SO_KEEPALIVE, 16#0009).
 -define(LINUX_TCP_KEEPIDLE, 16#4). % idle time used when SO_KEEPALIVE is enabled
 -define(LINUX_TCP_KEEPINTVL, 16#5). % interval between keepalives
