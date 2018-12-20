@@ -2,9 +2,11 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
-## 2.1.1
+## 3.0.0
 
+- Deprecate support for Erlang < 21.0
 - Support monitoring nodes
+- Support EC SSL certificates
 
 ## 2.1.0
 

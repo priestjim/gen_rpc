@@ -323,3 +323,5 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md)
 ### Contributors:
 
 - [Edward Tsang](https://github.com/linearregression)
+- [getong](https://github.com/getong)
+- [JianBo He](https://github.com/HJianBo)
