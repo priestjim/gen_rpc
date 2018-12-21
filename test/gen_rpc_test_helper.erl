@@ -116,6 +116,38 @@ set_driver_configuration(ssl, ?SLAVE) ->
                   {cacertfile, CaFile}], [{persistent, true}]]),
     ok;
 
+set_driver_configuration(ec_ssl, ?MASTER) ->
+    Prefix = filename:join(["..", "..", ".."]),
+    CertFile = filename:join([Prefix, "priv", "ec_ssl", atom_to_list(?MASTER)]),
+    CaFile = filename:join([Prefix, "priv", "ec_ssl", "ca.cert.pem"]),
+    ok = application:set_env(?APP, default_client_driver, ssl, [{persistent, true}]),
+    ok = application:set_env(?APP, ssl_server_port, ?MASTER_PORT, [{persistent, true}]),
+    ok = application:set_env(?APP, ssl_server_options, [
+                             {certfile, CertFile ++ ".cert.pem"},
+                             {keyfile, CertFile ++ ".key.pem"},
+                             {cacertfile, CaFile}], [{persistent, true}]),
+    ok = application:set_env(?APP, ssl_client_options, [
+                             {certfile, CertFile ++ ".cert.pem"},
+                             {keyfile, CertFile ++ ".key.pem"},
+                             {cacertfile, CaFile}], [{persistent, true}]),
+    ok;
+
+set_driver_configuration(ec_ssl, ?SLAVE) ->
+    Prefix = filename:join(["..", "..", ".."]),
+    CertFile = filename:join([Prefix, "priv", "ec_ssl", atom_to_list(?SLAVE)]),
+    CaFile = filename:join([Prefix, "priv", "ec_ssl", "ca.cert.pem"]),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, default_client_driver, ssl, [{persistent, true}]]),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_server_port, ?SLAVE_PORT, [{persistent, true}]]),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_server_options, [
+                  {certfile, CertFile ++ ".cert.pem"},
+                  {keyfile, CertFile ++ ".key.pem"},
+                  {cacertfile, CaFile}], [{persistent, true}]]),
+    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_client_options, [
+                  {certfile, CertFile ++ ".cert.pem"},
+                  {keyfile, CertFile ++ ".key.pem"},
+                  {cacertfile, CaFile}], [{persistent, true}]]),
+    ok;
+
 set_driver_configuration(tcp, ?MASTER) ->
     ok = application:set_env(?APP, default_client_driver, tcp, [{persistent, true}]),
     ok = application:set_env(?APP, tcp_server_port, ?MASTER_PORT, [{persistent, true}]),

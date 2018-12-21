@@ -17,13 +17,13 @@
 %%% CT callback functions
 %%% ===================================================
 all() ->
-    [{group, tcp}, {group, ssl}].
+    [{group, tcp}, {group, ssl}, {group, ec_ssl}].
     % [{group, tcp}].
 
 groups() ->
     Cases = gen_rpc_test_helper:get_test_functions(?MODULE),
     % [{tcp, [], Cases}].
-    [{tcp, [], Cases}, {ssl, [], Cases}].
+    [{tcp, [], Cases}, {ssl, [], Cases}, {ec_ssl, [], Cases}].
 
 init_per_group(Group, Config) ->
     % Our group name is the name of the driver

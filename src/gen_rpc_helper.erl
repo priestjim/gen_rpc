@@ -17,7 +17,8 @@
 -include("types.hrl").
 
 %%% Public API
--export([peer_to_string/1,
+-export([to_string/1,
+        peer_to_string/1,
         socket_to_string/1,
         host_from_node/1,
         set_optimal_process_flags/0,
@@ -27,6 +28,7 @@
         get_server_driver_options/1,
         get_client_config_per_node/1,
         get_client_driver_options/1,
+        get_cookie_per_node/1,
         get_connect_timeout/0,
         get_send_timeout/1,
         get_rpc_module_control/0,
@@ -40,6 +42,14 @@
 %%% ===================================================
 %%% Public API
 %%% ===================================================
+%% Convert any type to atom
+to_string(Str) when is_list(Str) ->
+    Str;
+to_string(Atom) when is_atom(Atom) ->
+    erlang:atom_to_list(Atom);
+to_string(Bin) when is_binary(Bin) ->
+    binary:bin_to_list(Bin).
+
 %% Return the connected peer's IP
 -spec peer_to_string({inet:ip4_address(), inet:port_number()} | inet:ip4_address()) -> string().
 peer_to_string({{A,B,C,D}, Port}) when is_integer(A), is_integer(B), is_integer(C), is_integer(D), is_integer(Port) ->
@@ -159,6 +169,20 @@ get_client_config_per_node(Node) when is_atom(Node) ->
         {internal, NodeMap} ->
             get_client_config_from_map(Node, NodeMap)
     end.
+
+-spec get_cookie_per_node(atom()) -> atom().
+get_cookie_per_node(Node) when is_atom(Node) ->
+    {ok, CookieConfig} = application:get_env(?APP, cookie_per_node),
+    case CookieConfig of
+        {external, Module} when is_atom(Module) ->
+            case Module:get_cookie(Node) of
+                Cookie when is_atom(Cookie) -> Cookie;
+                {error, Reason} -> {error, Reason}
+            end;
+        {internal, NodeMap} ->
+            maps:get(Node, NodeMap, erlang:get_cookie())
+    end.
+
 
 -spec get_connect_timeout() -> timeout().
 get_connect_timeout() ->

@@ -3,7 +3,7 @@ defmodule GenRPC.Mixfile do
 
   def project do
     [app: :gen_rpc,
-     version: "2.0.0",
+     version: "3.0.0",
      description: "A scalable RPC library for Erlang-VM based languages",
      package: package]
   end

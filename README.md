@@ -13,7 +13,7 @@
 
 To build this project you need to have the following:
 
-* **Erlang/OTP** >= 19.1
+* **Erlang/OTP** >= 21.0
 
 * **git** >= 1.7
 
@@ -93,6 +93,8 @@ For more information on what the functions below do, run `erl -man rpc`.
 - `sbcast(NodesOrNodesWithKeys, Name, Msg)` and `sbcast(Name, Msg)`: A synchronous broadcast function, sending the message `Msg` to the named process `Name` in all the nodes in `NodesOrNodesWithKeys`. Returns the nodes in which the named process is alive and the nodes in which it isn't.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
+
+- `monitor_node(Node, Flag)` and `monitor_node(Node, Flag, MessageType)`: Sends messages of node connects and disconnects to the subscribed process. Set `MessageType` to `gen_server` to send a `gen_server:cast` as a state change message, `gen_fsm` to send a `gen_fsm:send_all_state_event` as a state change message or `simple` to send a simple message upon node state change. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process.
 
 ### Per-Key Sharding
 
@@ -321,3 +323,5 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md)
 ### Contributors:
 
 - [Edward Tsang](https://github.com/linearregression)
+- [getong](https://github.com/getong)
+- [JianBo He](https://github.com/HJianBo)

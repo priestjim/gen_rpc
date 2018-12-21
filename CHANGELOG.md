@@ -2,6 +2,15 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
+## 3.0.0
+
+- Deprecate support for Erlang < 21.0
+- Support monitoring nodes
+- Support EC SSL certificates
+- Support cookie per node configuration
+- Support external cookie validation mechanism
+- Support keepalive gen_server that actively keeps a client connection alive
+
 ## 2.1.0
 
 - Support multiple connections per node using aribtrary keys.
