@@ -40,7 +40,7 @@
         %% Fine-graned driver/port control
         %% for each outgoing client connection
         %% The internal implementation expects
-        %% {internal, Map} whereh Map is a map of
+        %% {internal, Map} where Map is a map of
         %% node_name => {driver, port} or node_name => driver
         %% which uses the default port for the specified client driver
         %% If you have an external service that allows discovery
@@ -79,7 +79,15 @@
         %% Seconds between probes
         {socket_keepalive_interval, 5},
         %% Probes lost to close the connection
-        {socket_keepalive_count, 2}
+        {socket_keepalive_count, 2},
+        %% Cookie per node configuration
+        %% Set a separate cookie per node by setting
+        %% {internal, #{ Node::atom() => Cookie()::atom() }}
+        %% If you have an external service that can validate an incoming
+        %% client has provided the correct cookie / send the correct cookie per
+        %% node to the server, you can change this setting to
+        %% {external, Module}
+        {cookie_per_node, {internal, #{}}}
     ]},
     {modules, []}]
 }.

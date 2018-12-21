@@ -2,4 +2,4 @@
 
 This is a list of pending features or code technical debt for `gen_rpc`:
 
-N/A
+- Alternative Distribution Driver that transparently uses gen_rpc

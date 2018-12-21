@@ -244,7 +244,7 @@ init({Node}) ->
             ?log(info, "event=initializing_client driver=~s node=\"~s\" port=~B", [Driver, Node, Port]),
             case DriverMod:connect(Node, Port) of
                 {ok, Socket} ->
-                    case DriverMod:authenticate_server(Socket) of
+                    case DriverMod:authenticate_to_server(Node, Socket) of
                         ok ->
                             ok = gen_rpc_monitor:register_node(Node, self()),
                             Interval = application:get_env(?APP, keepalive_interval, 60), % 60s

@@ -25,12 +25,12 @@
 
 -export([start/3, check/1, cancel/1, resume/1]).
 
--record(keepalive, {statfun :: function(),
-                    statval :: integer(),
-                    tsec :: integer(),
+-record(keepalive, {statfun :: function() | undefined,
+                    statval :: integer() | undefined,
+                    tsec :: integer() | undefined,
                     tmsg :: term(),
-                    tref :: reference(),
-                    repeat :: integer()}).
+                    tref :: reference() | undefined,
+                    repeat :: integer() | undefined}).
 
 -type(keepalive() :: #keepalive{}).
 
