@@ -65,12 +65,26 @@ listen(Port) when is_integer(Port) ->
 -spec accept(ssl:sslsocket()) -> ok | {error, term()}.
 accept(Socket) when is_tuple(Socket) ->
     {ok, TSocket} = ssl:transport_accept(Socket, infinity),
-    case ssl:ssl_accept(TSocket) of
-        ok ->
-            {ok, TSocket};
+    case upgrade_ssl_socket(TSocket) of
+        {ok, TLSSocket} ->
+            {ok, TLSSocket};
+        {error, Error} ->
+            Error
+    end.
+
+
+-ifdef(post19).
+upgrade_ssl_socket(Socket) ->
+    ssl:handshake(Socket).
+-else.
+upgrade_ssl_socket(Socket) ->
+    case ssl:ssl_accept(Socket) of 
+        ok -> 
+            {ok, Socket};
         Error ->
             Error
     end.
+-endif.
 
 -spec send(ssl:sslsocket(), binary()) -> ok | {error, term()}.
 send(Socket, Data) when is_tuple(Socket), is_binary(Data) ->
