@@ -114,6 +114,9 @@ and pass them as the node list in the multi-node function.
 
 - `tcp_client_port`: The plain TCP port `gen_rpc` will use for outgoing connections.
 
+- `tcp_server_options` and `tcp_client_options`: Settings for the `tcp` driver that `gen_rpc` will use to
+  connect to a remote `gen_rpc` server.
+
 - `ssl_server_port`: The port `gen_rpc` will use for incoming SSL connections or `false` if you do not
   want SSL enabled.
 

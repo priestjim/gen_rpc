@@ -43,7 +43,8 @@
 connect(Node, Port) when is_atom(Node) ->
     Host = gen_rpc_helper:host_from_node(Node),
     ConnTO = gen_rpc_helper:get_connect_timeout(),
-    case gen_tcp:connect(Host, Port, ?TCP_DEFAULT_OPTS, ConnTO) of
+    TcpOpts = merge_tcp_options(client),
+    case gen_tcp:connect(Host, Port, TcpOpts, ConnTO) of
         {ok, Socket} ->
             ?log(debug, "event=connect_to_remote_server peer=\"~s\" socket=\"~s\" result=success",
                  [Node, gen_rpc_helper:socket_to_string(Socket)]),
@@ -55,7 +56,8 @@ connect(Node, Port) when is_atom(Node) ->
 
 -spec listen(inet:port_number()) -> {ok, port()} | {error, term()}.
 listen(Port) when is_integer(Port) ->
-    gen_tcp:listen(Port, ?TCP_DEFAULT_OPTS).
+    TcpOpts = merge_tcp_options(server),
+    gen_tcp:listen(Port, TcpOpts).
 
 -spec accept(port()) -> ok | {error, term()}.
 accept(Socket) when is_port(Socket) ->
@@ -200,6 +202,14 @@ set_acceptor_opts(Socket) when is_port(Socket) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+merge_tcp_options(server) ->
+    {ok, ExtraOpts} = application:get_env(?APP, tcp_server_options),
+    gen_rpc_helper:merge_sockopt_lists(ExtraOpts, ?TCP_DEFAULT_OPTS);
+
+merge_tcp_options(client) ->
+    {ok, ExtraOpts} = application:get_env(?APP, tcp_client_options),
+    gen_rpc_helper:merge_sockopt_lists(ExtraOpts, ?TCP_DEFAULT_OPTS).
+
 set_socket_keepalive({unix, darwin}, Socket) ->
     {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
     {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),

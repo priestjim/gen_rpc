@@ -1,3 +1,4 @@
+dist: trusty
 sudo: false
 language: erlang
 otp_release:
@@ -18,4 +19,3 @@ branches:
 notifications:
   email:
     - pj@ezgr.net
-

@@ -25,8 +25,12 @@
     {env,[
         %% TCP server port. Set to false to disable
         {tcp_server_port, 5369},
+        %% TCP server options
+        {tcp_server_options, []},
         %% Default TCP port for outgoing connections
         {tcp_client_port, 5369},
+        %% TCP client options
+        {tcp_client_options, []},
         %% SSL server port. Set to false to disable
         {ssl_server_port, false},
         %% SSL server options
