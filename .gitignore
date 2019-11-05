@@ -10,6 +10,7 @@ _*
 .erlang.cookie
 .DS_Store
 rebar.lock
+rebar3
 ebin
 log
 erl_crash.dump
