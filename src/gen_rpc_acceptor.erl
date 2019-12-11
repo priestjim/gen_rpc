@@ -48,8 +48,7 @@
 %%% ===================================================
 -spec start_link(atom(), {inet:ip4_address(), inet:port_number()}) -> gen_statem:startlink_ret().
 start_link(Driver, Peer) when is_atom(Driver), is_tuple(Peer) ->
-    Name = gen_rpc_helper:make_process_name("acceptor", Peer),
-    gen_statem:start_link({local,Name}, ?MODULE, {Driver, Peer}, []).
+    gen_statem:start_link(?MODULE, {Driver, Peer}, []).
 
 -spec stop(pid()) -> ok.
 stop(Pid) when is_pid(Pid) ->

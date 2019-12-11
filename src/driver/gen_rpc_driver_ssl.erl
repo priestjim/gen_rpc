@@ -65,7 +65,7 @@ listen(Port) when is_integer(Port) ->
 -spec accept(ssl:sslsocket()) -> ok | {error, term()}.
 accept(Socket) when is_tuple(Socket) ->
     {ok, TSocket} = ssl:transport_accept(Socket, infinity),
-    case ssl:ssl_accept(TSocket) of
+    case ssl:handshake(TSocket) of
         ok ->
             {ok, TSocket};
         Error ->
