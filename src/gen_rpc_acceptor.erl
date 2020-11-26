@@ -17,6 +17,14 @@
 %%% Include this library's name macro
 -include("app.hrl").
 
+-ifdef(OTP_RELEASE).
+-define(BIND_STACKTRACE(Var), :Var).
+-define(GET_STACKTRACE(Var), ok).
+-else.
+-define(BIND_STACKTRACE(Var), ).
+-define(GET_STACKTRACE(Var), Var = erlang:get_stacktrace()).
+-endif.
+
 %%% Local state
 -record(state, {socket = undefined :: port() | undefined,
         driver :: atom(),
@@ -267,7 +275,9 @@ call_middleman(M, F, A) ->
           catch
                throw:Term -> Term;
                exit:Reason -> {badrpc, {'EXIT', Reason}};
-               error:Reason -> {badrpc, {'EXIT', {Reason, erlang:get_stacktrace()}}}
+               error:Reason ?BIND_STACKTRACE(Stacktrace)->
+                    ?GET_STACKTRACE(Stacktrace),
+                    {badrpc, {'EXIT', {Reason, Stacktrace}}}
           end,
     erlang:exit({call_middleman_result, Res}),
     ok.
