@@ -4,7 +4,7 @@
 %%% Driver UDP para gen_rpc
 
 -module(gen_rpc_driver_udp).
--author("Seu Nome <seu.email@exemplo.com>").
+-author("Matheus de Camargo Marques <matheuscamarques@gmail.com>").
 
 %%% Behaviour
 -behaviour(gen_rpc_driver).
