@@ -124,7 +124,7 @@ waiting_for_data(info, {Driver,Socket,Data},
                             ?log(debug, "event=call_received driver=~s socket=\"~s\" peer=\"~s\" caller=\"~p\" worker_pid=\"~p\"",
                                  [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Caller, WorkerPid]),
                             ok = DriverMod:activate_socket(Socket),
-                            {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
                         false ->
                             ?log(debug, "event=incompatible_module_version driver=~s socket=\"~s\" method=~s module=~s",
                                  [Driver, gen_rpc_helper:socket_to_string(Socket), CallType, RealM]),
@@ -155,7 +155,7 @@ waiting_for_data(info, {Driver,Socket,Data},
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, RealM])
             end,
             ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
         {abcast, Name, Msg} ->
             _Result = case check_if_module_allowed(erlang, Control, List) of
                 true ->
@@ -167,7 +167,7 @@ waiting_for_data(info, {Driver,Socket,Data},
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, abcast])
                 end,
             ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
         {sbcast, Name, Msg, Caller} ->
             Reply = case check_if_module_allowed(erlang, Control, List) of
                 true ->
@@ -207,7 +207,7 @@ when CallReply =:= call orelse CallReply =:= async_call orelse CallReply =:= sbc
     case DriverMod:send(Socket, Packet) of
         ok ->
             ?log(debug, "message=call_reply event=call_reply_sent driver=~s socket=\"~s\"", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
         {error, Reason} ->
             ?log(error, "message=call_reply event=failed_to_send_call_reply driver=~s socket=\"~s\" reason=\"~p\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
@@ -311,4 +311,4 @@ check_module_version_compat({M, Version}) ->
     end;
 
 check_module_version_compat(M) ->
-    {true, M}.
+    {trueen, M}.

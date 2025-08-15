@@ -36,7 +36,8 @@
         get_call_receive_timeout/1,
         get_sbcast_receive_timeout/0,
         get_control_receive_timeout/0,
-        get_inactivity_timeout/1,
+        get_client_keepalive_interval/0,
+        get_server_inactivity_timeout/0,
         get_async_call_inactivity_timeout/0]).
 
 %%% ===================================================
@@ -235,12 +236,13 @@ get_send_timeout(Else) ->
     Else.
 
 %% Returns default inactivity timeouts for different modules
--spec get_inactivity_timeout(gen_rpc_client | gen_rpc_acceptor) -> timeout().
-get_inactivity_timeout(gen_rpc_client) ->
-    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
-    TTL;
+-spec get_client_keepalive_interval() -> timeout().
+get_client_keepalive_interval() ->
+    {ok, Interval} = application:get_env(?APP, client_keepalive_interval),
+    Interval;
 
-get_inactivity_timeout(gen_rpc_acceptor) ->
+-spec get_server_inactivity_timeout() -> timeout().
+get_server_inactivity_timeout() ->
     {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
     TTL.
 
