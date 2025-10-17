@@ -259,7 +259,7 @@ init({Node}) ->
                                                 driver_mod=DriverMod,
                                                 driver_closed=DriverClosed,
                                                 driver_error=DriverError,
-                                                keepalive=KeepAlive}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                                                keepalive=KeepAlive}, gen_rpc_helper:get_client_keepalive_interval()};
                                 {error, Error} ->
                                     ?log(error, "event=start_keepalive_failed driver=~p, reason=\"~p\"", [Driver, Error]),
                                     {stop, Error}
@@ -374,7 +374,7 @@ handle_info({DriverError, Socket, Reason}, #state{socket=Socket, driver=Driver, 
          [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
     {stop, normal, State};
 
-handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=CC} = State) when Kic < KicMax ->
+handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=_CC, driver_mod=DriverMod} = State) when Kic < KicMax ->
     Packet = erlang:term_to_binary(ping),
     ?log(debug, "message=keepalive_probe event=constructing_keepalive_term socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
     ok = DriverMod:set_send_timeout(Socket, undefined),
@@ -385,7 +385,7 @@ handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMa
             {stop, Reason, Reason, State};
         ok ->
             ?log(debug, "message=keepalive_probe event=transmission_succeeded driver=~s socket=\"~s\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket)),
+                 [Driver, gen_rpc_helper:socket_to_string(Socket)]),
             %% Activate the socket since we're expecting a ping response
             ok = DriverMod:activate_socket(Socket),
             {noreply, State#state{kic=0}, gen_rpc_helper:get_client_keepalive_interval()}

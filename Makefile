@@ -68,14 +68,8 @@ PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 ifneq ($(shell which docker 2> /dev/null),)
 
 NODES ?= 3
-IMAGE = $(shell docker images -q gen_rpc:integration 2> /dev/null)
 
-image:
-ifeq ($(IMAGE),)
-	@cd test/integration && docker build --rm --pull -t gen_rpc:integration .
-endif
-
-integration: image
+integration:
 	@export NODES=$(NODES) && cd test/integration && bash -c "./integration-tests.sh $(NODES)"
 endif
 

@@ -14,7 +14,9 @@
 -export([start_distribution/1,
         start_master/1,
         start_slave/1,
+        start_slave_with_cookie/2,
         stop_slave/0,
+        stop_slave/1,
         set_driver_configuration/2,
         set_application_environment/1,
         store_driver_in_config/2,
@@ -54,22 +56,75 @@ start_master(Driver) ->
     ok.
 
 start_slave(Driver) ->
-    %% Starting a slave node with Distributed Erlang
+    %% Starting a slave node with peer module (modern replacement for slave)
     SlaveStr = atom_to_list(?SLAVE),
     [NameStr, IpStr] = string:tokens(SlaveStr, [$@]),
-    Name = list_to_atom(NameStr),
-    {ok, _Slave} = slave:start(IpStr, Name),
-    ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
-    ok = set_application_environment(?SLAVE),
-    ok = set_driver_configuration(Driver, ?SLAVE),
+    
+    %% Use peer module instead of deprecated slave module
+    Args = ["-setcookie", atom_to_list(erlang:get_cookie())],
+    {ok, Peer, SlaveNode} = peer:start_link(#{name => NameStr, host => IpStr, args => Args}),
+    
+    %% Store the peer reference for cleanup later
+    put({peer_ref, SlaveNode}, Peer),
+    
+    ok = rpc:call(SlaveNode, code, add_pathsz, [code:get_path()]),
+    ok = set_application_environment(SlaveNode),
+    ok = set_driver_configuration(Driver, SlaveNode),
     %% Start lager
-    {ok, _SlaveLApps} = rpc:call(?SLAVE, application, ensure_all_started, [lager]),
+    {ok, _SlaveLApps} = rpc:call(SlaveNode, application, ensure_all_started, [lager]),
     %% Start the application remotely
-    {ok, _SlaveApps} = rpc:call(?SLAVE, application, ensure_all_started, [?APP]),
-    ok.
+    {ok, _SlaveApps} = rpc:call(SlaveNode, application, ensure_all_started, [?APP]),
+    {ok, SlaveNode}.
+
+start_slave_with_cookie(SlaveNode, Cookie) ->
+    %% Starting a slave node with specific cookie using peer module
+    SlaveStr = atom_to_list(SlaveNode),
+    [NameStr, IpStr] = string:tokens(SlaveStr, [$@]),
+    
+    %% Use peer module with specific cookie
+    Args = ["-setcookie", atom_to_list(Cookie)],
+    {ok, Peer, ActualSlaveNode} = peer:start_link(#{name => NameStr, host => IpStr, args => Args}),
+    
+    %% Store the peer reference for cleanup later
+    put({peer_ref, ActualSlaveNode}, Peer),
+    
+    ok = rpc:call(ActualSlaveNode, code, add_pathsz, [code:get_path()]),
+    ok = set_application_environment(ActualSlaveNode),
+    ok = set_driver_configuration(tcp, ActualSlaveNode),
+    %% Start lager
+    {ok, _SlaveLApps} = rpc:call(ActualSlaveNode, application, ensure_all_started, [lager]),
+    %% Start the application remotely
+    {ok, _SlaveApps} = rpc:call(ActualSlaveNode, application, ensure_all_started, [?APP]),
+    {ok, ActualSlaveNode}.
 
 stop_slave() ->
-    ok = slave:stop(?SLAVE),
+    %% For peer module, stop using the peer reference
+    case get({peer_ref, ?SLAVE}) of
+        undefined -> 
+            %% Fallback to old method if no peer reference
+            case lists:member(?SLAVE, nodes()) of
+                false -> ok;
+                true -> rpc:call(?SLAVE, init, stop, [])
+            end;
+        Peer ->
+            peer:stop(Peer),
+            erase({peer_ref, ?SLAVE})
+    end,
+    ok.
+
+stop_slave(SlaveNode) ->
+    %% For peer module, stop using the peer reference
+    case get({peer_ref, SlaveNode}) of
+        undefined -> 
+            %% Fallback to old method if no peer reference
+            case lists:member(SlaveNode, nodes()) of
+                false -> ok;
+                true -> rpc:call(SlaveNode, init, stop, [])
+            end;
+        Peer ->
+            peer:stop(Peer),
+            erase({peer_ref, SlaveNode})
+    end,
     ok.
 
 set_application_environment(?MASTER) ->
@@ -78,9 +133,9 @@ set_application_environment(?MASTER) ->
     end, ?TEST_APPLICATION_ENV),
     ok;
 
-set_application_environment(?SLAVE) ->
+set_application_environment(Node) when Node =/= ?MASTER ->
     ok = lists:foreach(fun({Application, Key, Value}) ->
-        ok = rpc:call(?SLAVE, application, set_env, [Application, Key, Value, [{persistent, true}]])
+        ok = rpc:call(Node, application, set_env, [Application, Key, Value, [{persistent, true}]])
     end, ?TEST_APPLICATION_ENV),
     ok.
 
@@ -153,9 +208,13 @@ set_driver_configuration(tcp, ?MASTER) ->
     ok = application:set_env(?APP, tcp_server_port, ?MASTER_PORT, [{persistent, true}]),
     ok;
 
-set_driver_configuration(tcp, ?SLAVE) ->
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, default_client_driver, tcp, [{persistent, true}]]),
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, tcp_server_port, ?SLAVE_PORT, [{persistent, true}]]),
+set_driver_configuration(tcp, Node) when Node =/= ?MASTER ->
+    Port = case Node of
+        ?SLAVE -> ?SLAVE_PORT;
+        _ -> ?SLAVE_PORT + 1  % Use a different port for other nodes
+    end,
+    ok = rpc:call(Node, application, set_env, [?APP, default_client_driver, tcp, [{persistent, true}]]),
+    ok = rpc:call(Node, application, set_env, [?APP, tcp_server_port, Port, [{persistent, true}]]),
     ok.
 
 store_driver_in_config(Driver, State) ->

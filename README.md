@@ -35,7 +35,7 @@ Or if you're using `hex.pm`/`rebar3`:
 
 ```erlang
 {deps [
-    {gen_rpc, "~> 2.0"}
+    {gen_rpc, "~> 3.0"}
 ]}.
 ```
 
@@ -45,7 +45,7 @@ Or if you're using Elixir/Mix:
 def project do
   [
     deps: [
-      {:gen_rpc, "~> 2.0"}
+      {:gen_rpc, "~> 3.0"}
     ]
   ]
 ```
@@ -72,6 +72,55 @@ Finally, start a couple of nodes to test it out:
 (my_app@127.0.0.1)1> gen_rpc:call('other_node@1.2.3.4', erlang, node, []).
 'other_node@1.2.3.4'
 ```
+
+## What's New in Version 3.0
+
+Version 3.0 introduces several significant improvements and new features:
+
+### Node Monitoring
+
+`gen_rpc` now supports monitoring remote node connections with the `monitor_node/2` function:
+
+```erlang
+%% Start monitoring a node
+true = gen_rpc:monitor_node(remote_node@host, true).
+
+%% The calling process will receive messages like:
+%% {nodeup, remote_node@host} when the node connects
+%% {nodedown, remote_node@host} when the node disconnects
+
+%% Stop monitoring a node  
+true = gen_rpc:monitor_node(remote_node@host, false).
+```
+
+### Per-Node Authentication Cookies
+
+Enhanced security with support for different authentication cookies per node:
+
+```erlang
+%% In your sys.config
+{gen_rpc, [
+    {cookie_per_node, {internal, #{
+        'secure_node@host1' => secure_cookie,
+        'dev_node@host2' => dev_cookie
+    }}}
+]}
+```
+
+### Elliptic Curve SSL Support
+
+Improved SSL support with Elliptic Curve certificates for better performance and security. EC SSL certificates are now included in `priv/ec_ssl/` for testing and development.
+
+### Enhanced Connection Management
+
+- Improved keepalive mechanisms for long-lived connections
+- Better connection monitoring and automatic cleanup
+- Enhanced SSL configuration with stronger cipher suites
+
+### Minimum OTP Version
+
+The minimum supported Erlang/OTP version has been updated to **21.0** for improved stability and access to modern language features.
+
 ## API
 
 `gen_rpc` implements only the subset of the functions of the `rpc` library that make sense for the problem it's trying to solve. The library's function interface and return values is **100%** compatible with `rpc` with only one addition: Error return values include `{badrpc, Error}` for RPC-based errors but also `{badtcp, Error}` for TCP-based errors.
@@ -94,7 +143,7 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
 
-- `monitor_node(Node, Flag)` and `monitor_node(Node, Flag, MessageType)`: Sends messages of node connects and disconnects to the subscribed process. Set `MessageType` to `gen_server` to send a `gen_server:cast` as a state change message, `gen_fsm` to send a `gen_fsm:send_all_state_event` as a state change message or `simple` to send a simple message upon node state change. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process.
+- `monitor_node(Node, Flag)`: Sends messages of node connects and disconnects to the subscribed process. When `Flag` is `true`, the calling process will receive `{nodeup, Node}` and `{nodedown, Node}` messages when the node connects or disconnects. When `Flag` is `false`, monitoring is disabled. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process.
 
 ### Per-Key Sharding
 
@@ -160,6 +209,8 @@ and pass them as the node list in the multi-node function.
 
 - `socket_keepalive_count`: Probs lost to consider the socket closed
 
+- `cookie_per_node`: Configuration for per-node authentication cookies. Set to `{internal, #{Node => Cookie}}` to define specific cookies for different nodes, or `{external, Module}` to use an external module that implements the `get_cookie/1` function. When a node is not found in the internal map, the default Erlang cookie is used.
+
 ## Logging
 
 `gen_rpc` uses [hut](https://github.com/tolbrino/hut) for logging. This allows the developer to integrate the logging library of their choice by providing the appropriate definition in their `rebar.config`. The default logging facility of `hut` is SASL.
@@ -178,7 +229,7 @@ For more information on how to enable `gen_rpc` to use your own logging facility
 
 - TLS 1.1/1.2 enforcement
 
-All of these settings can be found in `include/ssl.hrl` and overriden by redefining the necessary option in `ssl_client_options` and `ssl_server_options`. To actually use SSL support, you'll need to define in both `ssl_client_options` and `ssl_server_options`:
+All of these settings can be found in `include/ssl.hrl` and overriden by redefining the necessary option in `ssl_client_options` and `ssl_server_options`. `gen_rpc` supports both RSA and Elliptic Curve (EC) SSL certificates for enhanced security and performance. To actually use SSL support, you'll need to define in both `ssl_client_options` and `ssl_server_options`:
 
 - The public and private keys in PEM format, for the node you're running `gen_rpc` on, using the usual `certfile`, `keyfile` options.
 

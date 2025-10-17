@@ -239,7 +239,7 @@ get_send_timeout(Else) ->
 -spec get_client_keepalive_interval() -> timeout().
 get_client_keepalive_interval() ->
     {ok, Interval} = application:get_env(?APP, client_keepalive_interval),
-    Interval;
+    Interval.
 
 -spec get_server_inactivity_timeout() -> timeout().
 get_server_inactivity_timeout() ->

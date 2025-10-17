@@ -139,22 +139,22 @@ server_inactivity_timeout(_Config) ->
 random_local_tcp_close(_Config) ->
     {_Mega1, _Sec1, _Micro1} = rpc:call(?SLAVE, gen_rpc, call, [{?MASTER,random_key}, os, timestamp, []]),
     {_Mega2, _Sec2, _Micro2} = rpc:call(?SLAVE, gen_rpc, call, [{?MASTER,random_key2}, os, timestamp, []]),
-    [{_,AccPid,_,_}, _Other] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [{_,AccPid,_,_}, _Other1] = supervisor:which_children(gen_rpc_acceptor_sup),
     true = erlang:exit(AccPid, kill),
     ok = timer:sleep(600), % Give some time to the supervisor to kill the children
     [?MASTER] = rpc:call(?SLAVE, gen_rpc, nodes, []),
-    [_Other] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [_Other2] = supervisor:which_children(gen_rpc_acceptor_sup),
     [_Client] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_client_sup]).
 
 random_remote_tcp_close(_Config) ->
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call({?SLAVE,random_key}, os, timestamp),
     {_Mega2, _Sec2, _Micro2} = gen_rpc:call({?SLAVE,random_key2}, os, timestamp),
-    [{_,AccPid,_,_}, _Other] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
+    [{_,AccPid,_,_}, _Other3] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
     true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
     ok = timer:sleep(600),
     [?SLAVE] = gen_rpc:nodes(),
     [_Client] = supervisor:which_children(gen_rpc_client_sup),
-    [_Other] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]).
+    [_Other4] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]).
 
 %%% ===================================================
 %%% Auxiliary functions for test cases

@@ -10,7 +10,7 @@ NODES=""
 start_node() {
 	export NAME=gen_rpc_${1}
 	echo -n "Starting container ${NAME}: "
-	docker run -tid --privileged --name ${NAME} -P gen_rpc:integration
+	docker run -tid --privileged --name ${NAME} -P erlang:28
 	sleep 2
 	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' ${NAME})
 	export NODES="${IP}:${NODES}"
@@ -29,7 +29,7 @@ start_node() {
 start_master() {
 	export NAME=gen_rpc_master
 	echo -n "Starting container ${NAME}: "
-	docker run -i -t -d --privileged --name ${NAME} -P gen_rpc:integration
+	docker run -i -t -d --privileged --name ${NAME} -P erlang:28
 	sleep 2
 	export IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' gen_rpc_master)
 	docker exec -d ${NAME} epmd -daemon
