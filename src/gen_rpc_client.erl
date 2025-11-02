@@ -256,6 +256,9 @@ init({Node}) ->
                                 {ok, KeepAlive} ->
                                     {ok, #state{socket=Socket,
                                                 driver=Driver,
+                                                kic=0,
+                                                kic_max=60,
+                                                call_count=0,
                                                 driver_mod=DriverMod,
                                                 driver_closed=DriverClosed,
                                                 driver_error=DriverError,
@@ -295,7 +298,8 @@ handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socke
     end;
 
 %% Catch-all for calls - die if we get a message we don't expect
-handle_call(Msg, _Caller, #state{socket=Socket, driver=Driver} = State) ->
+handle_call(Msg, _Caller, State) ->
+    #state{socket=Socket, driver=Driver} = State,
     ?log(error, "event=uknown_call_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
@@ -527,7 +531,7 @@ async_call_worker(NodeOrTuple, M, F, A, Ref) ->
                 TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end;
-        TRpcError ->
+        TRpcError when is_tuple(TRpcError), element(1, TRpcError) =:= badrpc ->
             %% Wait for a yield request from the caller
             receive
                 {YieldPid,Ref,yield} ->

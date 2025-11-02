@@ -238,8 +238,10 @@ get_send_timeout(Else) ->
 %% Returns default inactivity timeouts for different modules
 -spec get_client_keepalive_interval() -> timeout().
 get_client_keepalive_interval() ->
-    {ok, Interval} = application:get_env(?APP, client_keepalive_interval),
-    Interval.
+    case application:get_env(?APP, client_keepalive_interval) of
+        {ok, Interval} -> Interval;
+        undefined -> 60000 % Default to 60 seconds if not configured
+    end.
 
 -spec get_server_inactivity_timeout() -> timeout().
 get_server_inactivity_timeout() ->

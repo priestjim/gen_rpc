@@ -311,4 +311,4 @@ check_module_version_compat({M, Version}) ->
     end;
 
 check_module_version_compat(M) ->
-    {trueen, M}.
+    {true, M}.
