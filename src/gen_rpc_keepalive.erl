@@ -78,4 +78,3 @@ cancel(_) ->
 
 timer(Sec, Msg) ->
     erlang:send_after(timer:seconds(Sec), self(), Msg).
-

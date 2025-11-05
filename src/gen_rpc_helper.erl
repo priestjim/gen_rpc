@@ -38,7 +38,8 @@
         get_control_receive_timeout/0,
         get_client_keepalive_interval/0,
         get_server_inactivity_timeout/0,
-        get_async_call_inactivity_timeout/0]).
+        get_async_call_inactivity_timeout/0,
+        get_inactivity_timeout/1]).
 
 %%% ===================================================
 %%% Public API
@@ -251,6 +252,14 @@ get_server_inactivity_timeout() ->
 -spec get_async_call_inactivity_timeout() -> timeout().
 get_async_call_inactivity_timeout() ->
     {ok, TTL} = application:get_env(?APP, async_call_inactivity_timeout),
+    TTL.
+
+-spec get_inactivity_timeout(atom()) -> timeout().
+get_inactivity_timeout(gen_rpc_client) ->
+    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
+    TTL;
+get_inactivity_timeout(gen_rpc_acceptor) ->
+    {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
     TTL.
 
 %%% ===================================================
