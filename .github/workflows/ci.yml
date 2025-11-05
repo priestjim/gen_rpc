@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+
+jobs:
+  build:
+    name: OTP ${{ matrix.otp }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        otp:
+          - "28.1.1"
+          - "27.3"
+          - "25.3"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: "3.25.1"
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/rebar3
+            _plt
+            rebar3
+            _build
+          key: ${{ runner.os }}-otp-${{ matrix.otp }}-rebar3-${{ hashFiles('rebar.lock', 'rebar.config', 'Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-otp-${{ matrix.otp }}-rebar3-
+            ${{ runner.os }}-otp-
+
+      - name: Run test/dialyzer/xref suite
+        run: make github-actions

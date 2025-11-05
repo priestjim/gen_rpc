@@ -262,7 +262,7 @@ init({Node}) ->
                                                 driver_mod=DriverMod,
                                                 driver_closed=DriverClosed,
                                                 driver_error=DriverError,
-                                                keepalive=KeepAlive}, gen_rpc_helper:get_client_keepalive_interval()};
+                                                keepalive=KeepAlive}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
                                 {error, Error} ->
                                     ?log(error, "event=start_keepalive_failed driver=~p, reason=\"~p\"", [Driver, Error]),
                                     {stop, Error}
@@ -294,7 +294,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socke
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = DriverMod:activate_socket(Socket),
-            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_client_keepalive_interval()}
+            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Catch-all for calls - die if we get a message we don't expect
@@ -334,7 +334,7 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = DriverMod:activate_socket(Socket),
             %% Reply will be handled from the worker
-            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_client_keepalive_interval()}
+            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
@@ -367,7 +367,7 @@ handle_info({Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mo
             CC
     end,
     ok = DriverMod:activate_socket(Socket),
-    {noreply, State#state{kic=0, call_count=NewCC}, gen_rpc_helper:get_client_keepalive_interval()};
+    {noreply, State#state{kic=0, call_count=NewCC}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
 
 handle_info({DriverClosed, Socket}, #state{socket=Socket, driver=Driver, driver_closed=DriverClosed} = State) ->
     ?log(error, "message=channel_closed driver=~s socket=\"~s\" action=stopping", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
@@ -378,7 +378,12 @@ handle_info({DriverError, Socket, Reason}, #state{socket=Socket, driver=Driver, 
          [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
     {stop, normal, State};
 
-handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=_CC, driver_mod=DriverMod} = State) when Kic < KicMax ->
+handle_info(timeout, #state{socket=Socket, driver=Driver, call_count=0} = State) ->
+    ?log(info, "message=timeout event=client_inactivity_timeout driver=~s socket=\"~s\" action=stopping",
+         [Driver, gen_rpc_helper:socket_to_string(Socket)]),
+    {stop, normal, State};
+
+handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=CallCount, driver_mod=DriverMod} = State) when CallCount > 0, Kic < KicMax ->
     Packet = erlang:term_to_binary(ping),
     ?log(debug, "message=keepalive_probe event=constructing_keepalive_term socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
     ok = DriverMod:set_send_timeout(Socket, undefined),
@@ -392,12 +397,12 @@ handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMa
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),
             %% Activate the socket since we're expecting a ping response
             ok = DriverMod:activate_socket(Socket),
-            {noreply, State#state{kic=0}, gen_rpc_helper:get_client_keepalive_interval()}
+            {noreply, State#state{kic=Kic+1}, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end;
 
 %% Handle the inactivity timeout gracefully
-handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=0} = State) when KicMax =:= Kic ->
-    ?log(info, "message=timeout event=client_inactivity_timeout driver=~s socket=\"~s\" action=stopping",
+handle_info(timeout, #state{socket=Socket, driver=Driver, kic=KicMax, kic_max=KicMax, call_count=CallCount} = State) when CallCount > 0 ->
+    ?log(info, "message=timeout event=client_keepalive_exceeded driver=~s socket=\"~s\" outstanding_calls=~B action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket)]),
     {stop, normal, State};
 
@@ -455,7 +460,7 @@ send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod
             end,
             ?log(debug, "message=cast event=transmission_succeeded driver=~s socket=\"~s\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            {noreply, State#state{kic=0}, gen_rpc_helper:get_client_keepalive_interval()}
+            {noreply, State#state{kic=0}, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
     end.
 
 send_ping(#state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
@@ -506,8 +511,10 @@ async_call_worker(NodeOrTuple, M, F, A, Ref) ->
                 {ok, NewPid} ->
                     ok = gen_server:cast(NewPid, {{async_call,M,F,A}, self(), Ref}),
                     NewPid;
-                {error, {badrpc,_} = RpcError} ->
-                    RpcError
+                {error, {Class,_} = RpcError} when Class =:= badrpc; Class =:= badtcp ->
+                    RpcError;
+                {error, Reason} ->
+                    {badrpc, Reason}
             end;
         Pid ->
             ?log(debug, "event=client_process_found pid=\"~p\" target=\"~p\"", [Pid, NodeOrTuple]),
@@ -531,7 +538,8 @@ async_call_worker(NodeOrTuple, M, F, A, Ref) ->
                 TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end;
-        TRpcError when is_tuple(TRpcError), element(1, TRpcError) =:= badrpc ->
+        TRpcError when is_tuple(TRpcError),
+                      (element(1, TRpcError) =:= badrpc orelse element(1, TRpcError) =:= badtcp) ->
             %% Wait for a yield request from the caller
             receive
                 {YieldPid,Ref,yield} ->

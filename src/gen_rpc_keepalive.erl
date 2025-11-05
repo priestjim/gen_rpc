@@ -38,8 +38,8 @@
 
 %% @doc Start a keepalive
 -spec(start(fun(), integer(), any()) -> {ok, keepalive()} | {error, term()}).
-start(_, 0, _) ->
-    {ok, #keepalive{}};
+start(_, TimeoutSec, TimeoutMsg) when TimeoutSec =< 0 ->
+    {ok, #keepalive{tmsg = TimeoutMsg}};
 start(StatFun, TimeoutSec, TimeoutMsg) ->
     case StatFun() of
         {ok, StatVal} ->

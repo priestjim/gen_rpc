@@ -3,13 +3,13 @@
 #
 # Build targets:
 #
-# all: 			    rebar3 as dev do compile
-# shell:		    rebar3 as dev do shell
-# clean: 		    rebar3 as dev do clean
+# all: 			    		rebar3 as dev do compile
+# shell:		    		rebar3 as dev do shell
+# clean: 		    		rebar3 as dev do clean
 # distclean:        rebar3 as dev do clean -a
 #                   and explicitly delete other build artifacts
-# test: 		    rebar3 as test do ct -v, cover
-# travis:           Run the proper tests/coveralls in travis
+# test: 		    		rebar3 as test do ct -v, cover
+# github-actions:   Run the proper tests/coveralls in github-actions
 # dialyzer:         rebar3 as test do dialyzer
 # xref:             rebar3 as dev do xref
 # dist:             rebar3 as test do compile, ct -v -c, xref, dialyzer, cover
@@ -26,7 +26,7 @@
 .DEFAULT_GOAL := all
 
 # Build targets
-.PHONY: all test dialyzer xref spec dist travis
+.PHONY: all test dialyzer xref spec dist github-actions
 
 # Run targets
 .PHONY: shell shell-master shell-slave
@@ -95,7 +95,7 @@ spec: dialyzer
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
 
-travis: testclean dist
+github-actions: testclean dist
 	@REBAR_PROFILE=test $(REBAR) do coveralls send || true
 
 # =============================================================================

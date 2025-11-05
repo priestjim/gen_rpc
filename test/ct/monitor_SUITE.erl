@@ -29,7 +29,7 @@ init_per_suite(Config) ->
     %% Starting the application locally
     {ok, _MasterApps} = application:ensure_all_started(?APP),
     %% Starting the second node
-    {ok, SlaveNode} = gen_rpc_test_helper:start_slave(?SLAVE),
+    {ok, SlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     [{slave,SlaveNode}|Config].
 
 end_per_suite(Config) ->
@@ -67,7 +67,7 @@ monitor_node_up_down(_Config) ->
     end,
     
     %% Restart the slave node
-    {ok, NewSlaveNode} = gen_rpc_test_helper:start_slave(?SLAVE),
+    {ok, NewSlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     
     %% Wait for nodeup message
     receive
