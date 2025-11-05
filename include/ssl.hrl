@@ -30,7 +30,6 @@
                   "ECDH-ECDSA-AES256-SHA","ECDH-RSA-AES256-SHA","AES256-SHA","ECDHE-ECDSA-AES128-SHA",
                   "ECDHE-RSA-AES128-SHA","DHE-DSS-AES128-SHA","ECDH-ECDSA-AES128-SHA","ECDH-RSA-AES128-SHA","AES128-SHA"]},
         {secure_renegotiate,true},
-        {honor_ecc_order,true},
         {honor_cipher_order,true},
         {reuse_sessions,true},
         {versions,['tlsv1.2','tlsv1.1']},

@@ -88,7 +88,7 @@ call(NodeOrTuple, M, F, A, RecvTO) ->
 %% This is the function that all of the above call
 -spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) ->
     term() | {badrpc,term()} | {badtcp,term()}.
-call(NodeOrTuple, M, F, A, RecvTO, SendTO) when ?is_node_or_tuple(NodeOrTuple), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A),
+call(NodeOrTuple, M, F, A, RecvTO, SendTO) when ?is_node_or_tuple(NodeOrTuple), (is_atom(M) orelse is_tuple(M)), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse ?is_timeout(RecvTO),
                                          SendTO =:= undefined orelse ?is_timeout(SendTO) ->
     %% Create a unique name for the client because we register as such
@@ -300,7 +300,7 @@ handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socke
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, State) ->
     #state{socket=Socket, driver=Driver} = State,
-    ?log(error, "event=uknown_call_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_call_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
@@ -339,7 +339,7 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_cast_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_cast_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_cast, Msg}, State}.
 
@@ -415,7 +415,7 @@ handle_info({keepalive, check}, #state{driver=Driver, keepalive=KeepAlive} = Sta
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_message_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_message_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_info, Msg}, State}.
 

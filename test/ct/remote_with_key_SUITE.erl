@@ -33,20 +33,20 @@ init_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:start_master(tcp),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
-    ok = gen_rpc_test_helper:start_slave(tcp),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     Config;
 
 init_per_testcase(server_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:start_master(tcp),
-    ok = gen_rpc_test_helper:start_slave(tcp),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     Config;
 
 init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:start_master(tcp),
-    ok = gen_rpc_test_helper:start_slave(tcp),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->

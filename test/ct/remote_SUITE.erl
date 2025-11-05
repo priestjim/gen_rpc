@@ -42,15 +42,15 @@ init_per_testcase(client_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
     ok = gen_rpc_test_helper:start_master(Driver),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(Driver),
     ok = application:set_env(?APP, client_inactivity_timeout, 500),
-    ok = gen_rpc_test_helper:start_slave(Driver),
     Config;
 
 init_per_testcase(server_inactivity_timeout, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
     ok = gen_rpc_test_helper:start_master(Driver),
-    ok = gen_rpc_test_helper:start_slave(Driver),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     Config;
 
@@ -58,7 +58,7 @@ init_per_testcase(rpc_module_whitelist, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
     ok = gen_rpc_test_helper:start_master(Driver),
-    ok = gen_rpc_test_helper:start_slave(Driver),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_list, [erlang, os]]),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_control, whitelist]),
     Config;
@@ -67,7 +67,7 @@ init_per_testcase(rpc_module_blacklist, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
     ok = gen_rpc_test_helper:start_master(Driver),
-    ok = gen_rpc_test_helper:start_slave(Driver),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(Driver),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_list, [erlang, os]]),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, rpc_module_control, blacklist]),
     Config;
@@ -75,7 +75,7 @@ init_per_testcase(rpc_module_blacklist, Config) ->
 init_per_testcase(external_client_config_source, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     ok = gen_rpc_test_helper:start_master(ssl),
-    ok = gen_rpc_test_helper:start_slave(tcp),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(tcp),
     %% No need to restore original setting with an
     %% end_per_testcase since this setting gets overwritten
     %% upon every application restart
@@ -86,7 +86,7 @@ init_per_testcase(_OtherTest, Config) ->
     ok = gen_rpc_test_helper:restart_application(),
     Driver = gen_rpc_test_helper:get_driver_from_config(Config),
     ok = gen_rpc_test_helper:start_master(Driver),
-    ok = gen_rpc_test_helper:start_slave(Driver),
+    {ok, _SlaveNode} = gen_rpc_test_helper:start_slave(Driver),
     Config.
 
 end_per_testcase(client_inactivity_timeout, Config) ->
