@@ -89,7 +89,7 @@ true = gen_rpc:monitor_node(remote_node@host, true).
 %% {nodeup, remote_node@host} when the node connects
 %% {nodedown, remote_node@host} when the node disconnects
 
-%% Stop monitoring a node  
+%% Stop monitoring a node
 true = gen_rpc:monitor_node(remote_node@host, false).
 ```
 
@@ -227,7 +227,7 @@ For more information on how to enable `gen_rpc` to use your own logging facility
 
 - Secure renegotiation
 
-- TLS 1.1/1.2 enforcement
+- TLS 1.2/1.3 enforcement
 
 All of these settings can be found in `include/ssl.hrl` and overriden by redefining the necessary option in `ssl_client_options` and `ssl_server_options`. `gen_rpc` supports both RSA and Elliptic Curve (EC) SSL certificates for enhanced security and performance. To actually use SSL support, you'll need to define in both `ssl_client_options` and `ssl_server_options`:
 
