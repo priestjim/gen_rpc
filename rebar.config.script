@@ -4,11 +4,12 @@
 
 Coveralls = {coveralls, {git, "https://github.com/markusn/coveralls-erl", {branch, "master"}}},
 
-case os:getenv("TRAVIS") of
+%% Coverage reporting is only enabled in GitHub Actions
+case os:getenv("GITHUB_ACTIONS") of
   "true" ->
-    JobId = os:getenv("TRAVIS_JOB_ID"),
-    CONFIG1 = lists:keystore(coveralls_service_job_id, 1, CONFIG, {coveralls_service_job_id, JobId}),
-    lists:keystore(plugins, 1, CONFIG1, {plugins, [Coveralls]});
+    Token = os:getenv("COVERALLS_REPO_TOKEN"),
+    CONFIG1 = lists:keystore(coveralls_repo_token, 1, CONFIG, {coveralls_repo_token, Token}),
+    lists:keystore(plugins, 1, CONFIG1, {plugins, [rebar3_hex, Coveralls]});
   _ ->
     CONFIG
 end.

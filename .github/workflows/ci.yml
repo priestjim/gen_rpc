@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: CT on OTP ${{ matrix.otp }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ['25', '26', '27', '28', '29']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          rebar3-version: latest
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/rebar3
+            _build
+          key: rebar3-${{ runner.os }}-otp${{ matrix.otp }}-${{ hashFiles('rebar.config', 'rebar.lock') }}
+          restore-keys: rebar3-${{ runner.os }}-otp${{ matrix.otp }}-
+      - name: Start epmd
+        run: epmd -daemon
+      - name: Run Common Test suites
+        run: rebar3 as test do ct -c, cover
+      - name: Upload Common Test logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ct-logs-otp-${{ matrix.otp }}
+          path: log/ct
+          retention-days: 7
+      - name: Send coverage to Coveralls
+        if: matrix.otp == '29' && github.event_name != 'pull_request'
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+        run: rebar3 as test coveralls send
+        continue-on-error: true
+
+  analysis:
+    name: Dialyzer and Xref
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '29'
+          rebar3-version: latest
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/rebar3
+            _build
+          key: rebar3-analysis-${{ runner.os }}-${{ hashFiles('rebar.config', 'rebar.lock') }}
+          restore-keys: rebar3-analysis-${{ runner.os }}-
+      - run: rebar3 as dev xref
+      - run: rebar3 as dev dialyzer
+
+  integration:
+    name: Integration tests (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Run integration tests
+        run: make integration
+      - name: Show container logs
+        if: failure()
+        run: docker compose -f test/integration/compose.yaml logs --no-color

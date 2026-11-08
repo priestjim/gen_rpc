@@ -30,6 +30,8 @@
 
 -callback set_acceptor_opts(term()) -> ok.
 
+-callback getstat(term(), list()) -> {ok, list()} | {error, term()}.
+
 -ifdef(TEST).
 %% Stub function to fool code coverage
 -export([stub/0]).

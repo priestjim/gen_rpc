@@ -1,0 +1,6 @@
+.git
+_build
+_plt
+log
+rebar3
+erl_crash.dump

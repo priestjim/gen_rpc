@@ -33,7 +33,7 @@
 %%% ===================================================
 %%% Public API
 %%% ===================================================
--spec start_link() -> gen_server:startlink_ret().
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, [], []).
 
@@ -68,17 +68,17 @@ handle_call({start_client, NodeOrTuple}, _Caller, undefined) ->
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, undefined) ->
-    ?log(error, "event=uknown_call_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=unknown_call_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_call, Msg}, undefined}.
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, undefined) ->
-    ?log(error, "event=uknown_cast_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=unknown_cast_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_cast, Msg}, undefined}.
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, undefined) ->
-    ?log(error, "event=uknown_message_received message=\"~p\" action=stopping", [Msg]),
+    ?log(error, "event=unknown_message_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_info, Msg}, undefined}.
 
 code_change(_OldVersion, undefined, _Extra) ->

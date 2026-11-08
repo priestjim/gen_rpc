@@ -15,6 +15,8 @@
         start_master/1,
         start_slave/1,
         stop_slave/0,
+        restart_application/0,
+        get_cookie/1,
         set_driver_configuration/2,
         set_application_environment/1,
         store_driver_in_config/2,
@@ -54,11 +56,16 @@ start_master(Driver) ->
     ok.
 
 start_slave(Driver) ->
-    %% Starting a slave node with Distributed Erlang
+    %% Starting a peer node with Distributed Erlang
+    %% (the slave module is deprecated, peer is its replacement)
     SlaveStr = atom_to_list(?SLAVE),
     [NameStr, IpStr] = string:tokens(SlaveStr, [$@]),
-    Name = list_to_atom(NameStr),
-    {ok, _Slave} = slave:start(IpStr, Name),
+    %% Peer nodes do not inherit the cookie of the node that started them
+    Args = ["-setcookie", atom_to_list(erlang:get_cookie())],
+    {ok, Peer, ?SLAVE} = peer:start(#{name => NameStr, host => IpStr, args => Args}),
+    %% Keep the peer controller around so we can stop the node later,
+    %% from any process
+    ok = persistent_term:put({?MODULE, peer}, Peer),
     ok = rpc:call(?SLAVE, code, add_pathsz, [code:get_path()]),
     ok = set_application_environment(?SLAVE),
     ok = set_driver_configuration(Driver, ?SLAVE),
@@ -69,7 +76,18 @@ start_slave(Driver) ->
     ok.
 
 stop_slave() ->
-    ok = slave:stop(?SLAVE),
+    case persistent_term:get({?MODULE, peer}, undefined) of
+        undefined ->
+            ok;
+        Peer ->
+            _ = persistent_term:erase({?MODULE, peer}),
+            %% The node might already be down
+            try peer:stop(Peer) of
+                ok -> ok
+            catch
+                exit:_ -> ok
+            end
+    end,
     ok.
 
 set_application_environment(?MASTER) ->
@@ -86,38 +104,6 @@ set_application_environment(?SLAVE) ->
 
 set_driver_configuration(ssl, ?MASTER) ->
     Prefix = filename:join(["..", "..", ".."]),
-    CertFile = filename:join([Prefix, "priv", "ssl", atom_to_list(?MASTER)]),
-    CaFile = filename:join([Prefix, "priv", "ssl", "ca.cert.pem"]),
-    ok = application:set_env(?APP, default_client_driver, ssl, [{persistent, true}]),
-    ok = application:set_env(?APP, ssl_server_port, ?MASTER_PORT, [{persistent, true}]),
-    ok = application:set_env(?APP, ssl_server_options, [
-                             {certfile, CertFile ++ ".cert.pem"},
-                             {keyfile, CertFile ++ ".key.pem"},
-                             {cacertfile, CaFile}], [{persistent, true}]),
-    ok = application:set_env(?APP, ssl_client_options, [
-                             {certfile, CertFile ++ ".cert.pem"},
-                             {keyfile, CertFile ++ ".key.pem"},
-                             {cacertfile, CaFile}], [{persistent, true}]),
-    ok;
-
-set_driver_configuration(ssl, ?SLAVE) ->
-    Prefix = filename:join(["..", "..", ".."]),
-    CertFile = filename:join([Prefix, "priv", "ssl", atom_to_list(?SLAVE)]),
-    CaFile = filename:join([Prefix, "priv", "ssl", "ca.cert.pem"]),
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, default_client_driver, ssl, [{persistent, true}]]),
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_server_port, ?SLAVE_PORT, [{persistent, true}]]),
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_server_options, [
-                  {certfile, CertFile ++ ".cert.pem"},
-                  {keyfile, CertFile ++ ".key.pem"},
-                  {cacertfile, CaFile}], [{persistent, true}]]),
-    ok = rpc:call(?SLAVE, application, set_env, [?APP, ssl_client_options, [
-                  {certfile, CertFile ++ ".cert.pem"},
-                  {keyfile, CertFile ++ ".key.pem"},
-                  {cacertfile, CaFile}], [{persistent, true}]]),
-    ok;
-
-set_driver_configuration(ec_ssl, ?MASTER) ->
-    Prefix = filename:join(["..", "..", ".."]),
     CertFile = filename:join([Prefix, "priv", "ec_ssl", atom_to_list(?MASTER)]),
     CaFile = filename:join([Prefix, "priv", "ec_ssl", "ca.cert.pem"]),
     ok = application:set_env(?APP, default_client_driver, ssl, [{persistent, true}]),
@@ -132,7 +118,7 @@ set_driver_configuration(ec_ssl, ?MASTER) ->
                              {cacertfile, CaFile}], [{persistent, true}]),
     ok;
 
-set_driver_configuration(ec_ssl, ?SLAVE) ->
+set_driver_configuration(ssl, ?SLAVE) ->
     Prefix = filename:join(["..", "..", ".."]),
     CertFile = filename:join([Prefix, "priv", "ec_ssl", atom_to_list(?SLAVE)]),
     CaFile = filename:join([Prefix, "priv", "ec_ssl", "ca.cert.pem"]),
@@ -188,6 +174,13 @@ get_test_functions(Module) ->
                                    ({loop2,_}) -> false;
                                    ({wait_for_reply,_}) -> false;
                                    ({terminate_process,_}) -> false;
+                                   %% Monitor
+                                   ({kill_client,_}) -> false;
+                                   ({get_client_pid,_}) -> false;
+                                   ({expect_no_message,_}) -> false;
+                                   ({wait_until_state_is_empty,_}) -> false;
+                                   %% Cookie per node
+                                   ({to_config,_}) -> false;
                                    %% Else
                                    ({_,1}) -> true;
                                    ({_,_}) -> false
@@ -214,6 +207,10 @@ spawn_short_running() ->
 
 stub_function() ->
   stub_function.
+
+%% Callback for the external cookie per node configuration
+get_cookie(_Node) ->
+    external_test_cookie.
 
 ping({Node, Process, Msg}) ->
     {Process, Node} ! {pong, {node(), Process, Msg}}.

@@ -85,7 +85,7 @@ send(Socket, Data) when is_port(Socket), is_binary(Data) ->
 -spec authenticate_to_server(atom(), port()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_to_server(Node, Socket) ->
     Cookie = gen_rpc_helper:get_cookie_per_node(Node),
-    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, Node, Cookie}),
+    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, node(), Cookie}),
     SendTO = gen_rpc_helper:get_send_timeout(undefined),
     RecvTO = gen_rpc_helper:get_call_receive_timeout(undefined),
     ok = set_send_timeout(Socket, SendTO),
@@ -201,7 +201,7 @@ set_acceptor_opts(Socket) when is_port(Socket) ->
     ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}|?ACCEPTOR_DEFAULT_TCP_OPTS]),
     ok.
 
--spec getstat(port(), list()) -> ok | {error, term()}.
+-spec getstat(port(), list()) -> {ok, list()} | {error, term()}.
 getstat(Socket, OptNames) ->
     inet:getstat(Socket, OptNames).
 

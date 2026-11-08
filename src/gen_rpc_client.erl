@@ -24,13 +24,11 @@
 %%% Local state
 -record(state, {socket :: port(),
         driver :: atom(),
-        kic :: number(), % Keepalive Inactivity Counter
-        kic_max :: number(), % Keepalive Inactivity Counter configured value
-        call_count :: number(), % Counter of active requests that expect responses
         driver_mod :: atom(),
         driver_closed :: atom(),
         driver_error :: atom(),
-        keepalive :: tuple()}).
+        keepalive :: gen_rpc_keepalive:keepalive(),
+        last_activity :: integer()}). % Monotonic time (ms) of the last non-keepalive activity
 
 %%% Supervisor functions
 -export([start_link/1, stop/1]).
@@ -56,7 +54,7 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link(node_or_tuple()) -> gen_server:startlink_ret().
+-spec start_link(node_or_tuple()) -> gen_server:start_ret().
 start_link(NodeOrTuple) when ?is_node_or_tuple(NodeOrTuple) ->
     PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
     gen_server:start_link({local,PidName}, ?MODULE, {NodeOrTuple}, []).
@@ -250,19 +248,20 @@ init({Node}) ->
                     case DriverMod:authenticate_to_server(Node, Socket) of
                         ok ->
                             ok = gen_rpc_monitor:register_node(Node, self()),
-                            Interval = application:get_env(?APP, keepalive_interval, 60), % 60s
                             KeepaliveFun = keepalive_probe(DriverMod, Socket),
-                            case gen_rpc_keepalive:start(KeepaliveFun, Interval, {keepalive, check}) of
+                            case gen_rpc_keepalive:start(KeepaliveFun, gen_rpc_helper:get_keepalive_interval(), {keepalive, check}) of
                                 {ok, KeepAlive} ->
-                                    {ok, #state{socket=Socket,
-                                                driver=Driver,
-                                                driver_mod=DriverMod,
-                                                driver_closed=DriverClosed,
-                                                driver_error=DriverError,
-                                                keepalive=KeepAlive}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+                                    State = #state{socket=Socket,
+                                                   driver=Driver,
+                                                   driver_mod=DriverMod,
+                                                   driver_closed=DriverClosed,
+                                                   driver_error=DriverError,
+                                                   keepalive=KeepAlive,
+                                                   last_activity=erlang:monotonic_time(millisecond)},
+                                    {ok, State, remaining_timeout(State)};
                                 {error, Error} ->
-                                    ?log(error, "event=start_keepalive_failed driver=~p, reason=\"~p\"", [Driver, Error]),
-                                    {stop, Error}
+                                    ?log(error, "event=start_keepalive_failed driver=~s reason=\"~p\"", [Driver, Error]),
+                                    {stop, {badrpc, Error}}
                             end;
                         {error, ReasonTuple} ->
                             ?log(error, "event=client_authentication_failed driver=~s reason=\"~p\"", [Driver, ReasonTuple]),
@@ -276,7 +275,7 @@ init({Node}) ->
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket, driver=Driver, driver_mod=DriverMod, call_count=CC} = State) ->
+handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
     Packet = erlang:term_to_binary({PacketTuple, Caller}),
     ?log(debug, "message=call event=constructing_call_term driver=~s socket=\"~s\" caller=\"~p\"",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
@@ -291,19 +290,19 @@ handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socke
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = DriverMod:activate_socket(Socket),
-            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_client_keepalive_interval()}
+            NewState = touch(State),
+            {noreply, NewState, remaining_timeout(NewState)}
     end;
 
 %% Catch-all for calls - die if we get a message we don't expect
 handle_call(Msg, _Caller, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_call_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_call_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_call, Msg}, {unknown_call, Msg}, State}.
 
 %% This is the actual CAST handler for CAST
 handle_cast({{cast,_M,_F,_A} = PacketTuple, SendTO}, State) ->
     send_cast(PacketTuple, State, SendTO, false);
-    % send_cast(PacketTuple, State, SendTO, true);
 
 %% This is the actual CAST handler for ABCAST
 handle_cast({{abcast,_Name,_Msg} = PacketTuple, undefined}, State) ->
@@ -314,7 +313,7 @@ handle_cast({{sbcast,_Name,_Msg,_Caller} = PacketTuple, undefined}, State) ->
     send_cast(PacketTuple, State, undefined, true);
 
 %% This is the actual ASYNC CALL handler
-handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod, call_count=CC} = State) ->
+handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
     Packet = erlang:term_to_binary({PacketTuple, {Caller,Ref}}),
     ?log(debug, "message=async_call event=constructing_async_call_term socket=\"~s\" worker_pid=\"~p\" async_call_ref=\"~p\"",
          [gen_rpc_helper:socket_to_string(Socket), Caller, Ref]),
@@ -330,40 +329,38 @@ handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=So
             %% We need to enable the socket and perform the call only if the call succeeds
             ok = DriverMod:activate_socket(Socket),
             %% Reply will be handled from the worker
-            {noreply, State#state{kic=0, call_count=CC+1}, gen_rpc_helper:get_client_keepalive_interval()}
+            NewState = touch(State),
+            {noreply, NewState, remaining_timeout(NewState)}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
 handle_cast(Msg, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_cast_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_cast_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_cast, Msg}, State}.
 
 %% Handle any TCP packet coming in
-handle_info({Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod, call_count=CC} = State) ->
-    NewCC = case erlang:binary_to_term(Data) of
+handle_info({Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+    _Reply = case erlang:binary_to_term(Data) of
         {call, Caller, Reply} ->
             ?log(debug, "event=call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
-            gen_server:reply(Caller, Reply),
-            CC - 1;
+            gen_server:reply(Caller, Reply);
         {async_call, {Caller, Ref}, Reply} ->
             ?log(debug, "event=async_call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
-            Caller ! {self(), Ref, async_call, Reply},
-            CC - 1;
+            Caller ! {self(), Ref, async_call, Reply};
         {sbcast, {Caller, Ref, Node}, Reply} ->
             ?log(debug, "event=sbcast_reply_received driver=~s socket=\"~s\" caller=\"~p\" reference=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller, Ref]),
-            Caller ! {Ref, Node, Reply},
-            CC - 1;
+            Caller ! {Ref, Node, Reply};
         OtherData ->
             ?log(error, "event=erroneous_reply_received driver=~s socket=\"~s\" data=\"~p\" action=ignoring",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), OtherData]),
-            CC
+                 [Driver, gen_rpc_helper:socket_to_string(Socket), OtherData])
     end,
     ok = DriverMod:activate_socket(Socket),
-    {noreply, State#state{kic=0, call_count=NewCC}, gen_rpc_helper:get_client_keepalive_interval()};
+    NewState = touch(State),
+    {noreply, NewState, remaining_timeout(NewState)};
 
 handle_info({DriverClosed, Socket}, #state{socket=Socket, driver=Driver, driver_closed=DriverClosed} = State) ->
     ?log(error, "message=channel_closed driver=~s socket=\"~s\" action=stopping", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
@@ -374,44 +371,32 @@ handle_info({DriverError, Socket, Reason}, #state{socket=Socket, driver=Driver, 
          [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
     {stop, normal, State};
 
-handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=CC} = State) when Kic < KicMax ->
-    Packet = erlang:term_to_binary(ping),
-    ?log(debug, "message=keepalive_probe event=constructing_keepalive_term socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
-    ok = DriverMod:set_send_timeout(Socket, undefined),
-    case DriverMod:send(Socket, Packet) of
-        {error, Reason} ->
-            ?log(error, "message=keepalive_probe event=transmission_failed driver=~s socket=\"~s\" reason=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
-            {stop, Reason, Reason, State};
-        ok ->
-            ?log(debug, "message=keepalive_probe event=transmission_succeeded driver=~s socket=\"~s\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket)),
-            %% Activate the socket since we're expecting a ping response
-            ok = DriverMod:activate_socket(Socket),
-            {noreply, State#state{kic=0}, gen_rpc_helper:get_client_keepalive_interval()}
-    end;
-
 %% Handle the inactivity timeout gracefully
-handle_info(timeout, #state{socket=Socket, driver=Driver, kic=Kic, kic_max=KicMax, call_count=0} = State) when KicMax =:= Kic ->
+handle_info(timeout, #state{socket=Socket, driver=Driver} = State) ->
     ?log(info, "message=timeout event=client_inactivity_timeout driver=~s socket=\"~s\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket)]),
     {stop, normal, State};
 
+%% Handle the keepalive check. Keepalive traffic does not count as client
+%% activity so it does not postpone the inactivity timeout
 handle_info({keepalive, check}, #state{driver=Driver, keepalive=KeepAlive} = State) ->
     case gen_rpc_keepalive:check(KeepAlive) of
         {ok, KeepAlive1} ->
-            {noreply, State#state{keepalive=KeepAlive1}, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            %% Data has been received since the last check, the connection is alive
+            NewState = State#state{keepalive=KeepAlive1},
+            {noreply, NewState, remaining_timeout(NewState)};
         {error, timeout} ->
+            %% Nothing received, probe the server
             send_ping(State#state{keepalive=gen_rpc_keepalive:resume(KeepAlive)});
         {error, Reason} ->
-            ?log(error, "event=keepalive_check_failed driver=~p, reason=\"~p\" action=stopping",
+            ?log(error, "event=keepalive_check_failed driver=~s reason=\"~p\" action=stopping",
                 [Driver, Reason]),
-            {stop, Reason, State}
+            {stop, normal, State}
     end;
 
 %% Catch-all for info - our protocol is strict so die!
 handle_info(Msg, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_message_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
+    ?log(error, "event=unknown_message_received driver=~s socket=\"~s\" message=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Msg]),
     {stop, {unknown_info, Msg}, State}.
 
@@ -420,19 +405,33 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(_Reason, #state{keepalive=KeepAlive}) ->
-    gen_rpc_keepalive:cancel(KeepAlive),
+    ok = gen_rpc_keepalive:cancel(KeepAlive),
     ok.
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+%% Returns the function the keepalive uses to detect socket activity
 keepalive_probe(DriverMod, Socket) ->
     fun() ->
         case DriverMod:getstat(Socket, [recv_oct]) of
             {ok, [{recv_oct, RecvOct}]} -> {ok, RecvOct};
             {error, Error}              -> {error, Error}
         end
-      end.
+    end.
+
+%% Record client activity
+touch(State) ->
+    State#state{last_activity=erlang:monotonic_time(millisecond)}.
+
+%% Time left until the client inactivity timeout is reached
+remaining_timeout(#state{last_activity=LastActivity}) ->
+    case gen_rpc_helper:get_client_inactivity_timeout() of
+        infinity ->
+            infinity;
+        TTL ->
+            erlang:max(0, TTL - (erlang:monotonic_time(millisecond) - LastActivity))
+    end.
 
 send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State, SendTO, Activate) ->
     Packet = erlang:term_to_binary(PacketTuple),
@@ -451,7 +450,8 @@ send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod
             end,
             ?log(debug, "message=cast event=transmission_succeeded driver=~s socket=\"~s\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            {noreply, State#state{kic=0}, gen_rpc_helper:get_client_keepalive_interval()}
+            NewState = touch(State),
+            {noreply, NewState, remaining_timeout(NewState)}
     end.
 
 send_ping(#state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
@@ -465,9 +465,9 @@ send_ping(#state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
         ok ->
             ?log(debug, "message=ping event=transmission_succeeded driver=~s socket=\"~s\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            %% We should keep this flag same as previous
+            %% Keep the socket active so that we get notified of a closed connection
             ok = DriverMod:activate_socket(Socket),
-            {noreply, State, gen_rpc_helper:get_inactivity_timeout(?MODULE)}
+            {noreply, State, remaining_timeout(State)}
     end.
 
 cast_worker(NodeOrTuple, Cast, Ret, SendTO) ->

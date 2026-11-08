@@ -18,29 +18,26 @@
         {tos,72}, % Deliver immediately
         {active,false},
         %% SSL options
-        {ciphers,["ECDHE-ECDSA-AES256-GCM-SHA384","ECDHE-RSA-AES256-GCM-SHA384",
-                  "ECDHE-ECDSA-AES256-SHA384","ECDHE-RSA-AES256-SHA384","ECDHE-ECDSA-DES-CBC3-SHA",
-                  "ECDH-ECDSA-AES256-GCM-SHA384","ECDH-RSA-AES256-GCM-SHA384","ECDH-ECDSA-AES256-SHA384",
-                  "ECDH-RSA-AES256-SHA384","DHE-DSS-AES256-GCM-SHA384","DHE-DSS-AES256-SHA256",
-                  "AES256-GCM-SHA384","AES256-SHA256","ECDHE-ECDSA-AES128-GCM-SHA256",
-                  "ECDHE-RSA-AES128-GCM-SHA256","ECDHE-ECDSA-AES128-SHA256","ECDHE-RSA-AES128-SHA256",
-                  "ECDH-ECDSA-AES128-GCM-SHA256","ECDH-RSA-AES128-GCM-SHA256","ECDH-ECDSA-AES128-SHA256",
-                  "ECDH-RSA-AES128-SHA256","DHE-DSS-AES128-GCM-SHA256","DHE-DSS-AES128-SHA256","AES128-GCM-SHA256",
-                  "AES128-SHA256","ECDHE-ECDSA-AES256-SHA","ECDHE-RSA-AES256-SHA","DHE-DSS-AES256-SHA",
-                  "ECDH-ECDSA-AES256-SHA","ECDH-RSA-AES256-SHA","AES256-SHA","ECDHE-ECDSA-AES128-SHA",
-                  "ECDHE-RSA-AES128-SHA","DHE-DSS-AES128-SHA","ECDH-ECDSA-AES128-SHA","ECDH-RSA-AES128-SHA","AES128-SHA"]},
-        {secure_renegotiate,true},
-        {honor_ecc_order,true},
-        {honor_cipher_order,true},
-        {reuse_sessions,true},
-        {versions,['tlsv1.2','tlsv1.1']},
+        %% TLS 1.3 AEAD cipher suites, the key exchange is negotiated
+        %% separately through the supported groups
+        {ciphers,["TLS_AES_256_GCM_SHA384",
+                "TLS_CHACHA20_POLY1305_SHA256",
+                "TLS_AES_128_GCM_SHA256"]},
+        %% Hybrid post-quantum (ML-KEM) and elliptic curve key exchange only,
+        %% filtered at runtime against what the running OTP release supports
+        {supported_groups,gen_rpc_helper:get_ssl_groups()},
+        %% ECDSA only, both for the handshake and for the certificate chain
+        {signature_algs,[ecdsa_secp384r1_sha384,ecdsa_secp256r1_sha256,ecdsa_secp521r1_sha512]},
+        {signature_algs_cert,[ecdsa_secp384r1_sha384,ecdsa_secp256r1_sha256,ecdsa_secp521r1_sha512]},
+        {versions,['tlsv1.3']},
         {verify,verify_peer},
         {hibernate_after,600000},
         {active,false}]).
 
 -define(SSL_DEFAULT_SERVER_OPTS, [{fail_if_no_peer_cert,true},
         {log_alert,false},
-        {client_renegotiation,true}]).
+        {honor_ecc_order,true},
+        {honor_cipher_order,true}]).
 
 -define(SSL_DEFAULT_CLIENT_OPTS, [{server_name_indication,disable},
         {depth,99}]).

@@ -52,13 +52,11 @@ start(StatFun, TimeoutSec, TimeoutMsg) ->
 
 %% @doc Check keepalive, called when timeout.
 -spec(check(keepalive()) -> {ok, keepalive()} | {error, term()}).
-check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal, repeat = _Repeat}) ->
+check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal}) ->
     case StatFun() of
         {ok, NewVal} ->
             if NewVal =/= LastVal ->
                     {ok, resume(KeepAlive#keepalive{statval = NewVal, repeat = 0})};
-                % Repeat < 1 ->
-                %     {ok, resume(KeepAlive#keepalive{statval = NewVal, repeat = Repeat + 1})};
                 true ->
                     {error, timeout}
             end;
@@ -66,13 +64,16 @@ check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal, repeat = _Rep
             {error, Error}
     end.
 
+%% @doc Resume keepalive, schedules the next check.
+-spec(resume(keepalive()) -> keepalive()).
 resume(KeepAlive = #keepalive{tsec = TimeoutSec, tmsg = TimeoutMsg}) ->
     KeepAlive#keepalive{tref = timer(TimeoutSec, TimeoutMsg)}.
 
 %% @doc Cancel Keepalive
 -spec(cancel(keepalive()) -> ok).
 cancel(#keepalive{tref = TRef}) when is_reference(TRef) ->
-    catch erlang:cancel_timer(TRef), ok;
+    _ = erlang:cancel_timer(TRef),
+    ok;
 cancel(_) ->
     ok.
 

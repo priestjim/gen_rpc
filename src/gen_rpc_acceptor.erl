@@ -46,7 +46,7 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link(atom(), {inet:ip4_address(), inet:port_number()}) -> gen_statem:startlink_ret().
+-spec start_link(atom(), {inet:ip4_address(), inet:port_number()}) -> gen_statem:start_ret().
 start_link(Driver, Peer) when is_atom(Driver), is_tuple(Peer) ->
     Name = gen_rpc_helper:make_process_name("acceptor", Peer),
     gen_statem:start_link({local,Name}, ?MODULE, {Driver, Peer}, []).
@@ -188,7 +188,7 @@ waiting_for_data(info, {Driver,Socket,Data},
             ?log(debug, "event=ping_received driver=~s socket=\"~s\" peer=\"~s\" action=ignore",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
             ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_inactivity_timeout(?MODULE)};
+            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
         OtherData ->
             ?log(debug, "event=erroneous_data_received driver=~s socket=\"~s\" peer=\"~s\" data=\"~p\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),
@@ -237,7 +237,7 @@ handle_event(info, {DriverError, Socket, Reason}, _StateName, #state{socket=Sock
     {stop, normal, State};
 
 handle_event(EventType, Event, StateName, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
+    ?log(error, "event=unknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), EventType, Event]),
     {stop, {StateName, undefined_event, Event}, State}.
 
@@ -311,4 +311,4 @@ check_module_version_compat({M, Version}) ->
     end;
 
 check_module_version_compat(M) ->
-    {trueen, M}.
+    {true, M}.

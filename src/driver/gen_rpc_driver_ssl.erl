@@ -210,7 +210,7 @@ set_acceptor_opts(Socket) when is_tuple(Socket) ->
     ok = ssl:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
     ok.
 
--spec getstat(ssl:sslsocket(), list()) -> ok | {error, any()}.
+-spec getstat(ssl:sslsocket(), list()) -> {ok, list()} | {error, term()}.
 getstat(Socket, OptNames) ->
     ssl:getstat(Socket, OptNames).
 
