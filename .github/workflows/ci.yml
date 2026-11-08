@@ -28,7 +28,8 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{ matrix.otp }}
-          rebar3-version: latest
+          # rebar3 3.28 does not run on OTP 25
+          rebar3-version: ${{ matrix.otp == '25' && '3.24.0' || 'latest' }}
       - uses: actions/cache@v6
         with:
           path: |
@@ -68,9 +69,15 @@ jobs:
           path: |
             ~/.cache/rebar3
             _build
+            _plt
           key: rebar3-analysis-${{ runner.os }}-${{ hashFiles('rebar.config', 'rebar.lock') }}
           restore-keys: rebar3-analysis-${{ runner.os }}-
       - run: rebar3 as dev xref
+      # Building the PLT also analyzes the OTP applications with our warning flags
+      # (unmatched_returns) and reports warnings that are not ours, so build it first
+      # and ignore the result, then analyze the project against the finished PLT
+      - name: Build the PLT
+        run: rebar3 as dev dialyzer || true
       - run: rebar3 as dev dialyzer
 
   integration:
