@@ -10,11 +10,11 @@
 
 -callback listen(inet:port_number()) -> {ok, term()} | {error, term()}.
 
--callback accept(term()) -> ok | {error, term()}.
+-callback accept(term()) -> {ok, inet:socket() | ssl:sslsocket()} | {error, term()}.
 
 -callback activate_socket(term()) -> ok.
 
--callback authenticate_server(term()) -> ok | {error, {badtcp | badrpc, term()}}.
+-callback authenticate_to_server(atom(), term()) -> ok | {error, {badtcp | badrpc, term()}}.
 
 -callback authenticate_client(term(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 
@@ -29,6 +29,8 @@
 -callback set_send_timeout(term(), timeout() | undefined) -> ok.
 
 -callback set_acceptor_opts(term()) -> ok.
+
+-callback getstat(term(), list()) -> {ok, list()} | {error, term()}.
 
 -ifdef(TEST).
 %% Stub function to fool code coverage

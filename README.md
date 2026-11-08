@@ -3,8 +3,8 @@
 ## Overview
 
 - Latest release: ![Tag Version](https://img.shields.io/github/tag/priestjim/gen_rpc.svg)
-- Branch status (`master`): [![Build Status](https://travis-ci.org/priestjim/gen_rpc.svg?branch=master)](https://travis-ci.org/priestjim/gen_rpc) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=master&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=master)
-- Branch status (`develop`): [![Build Status](https://travis-ci.org/priestjim/gen_rpc.svg?branch=develop)](https://travis-ci.org/priestjim/gen_rpc) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=develop&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=develop)
+- Branch status (`master`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Amaster) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=master&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=master)
+- Branch status (`develop`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Adevelop) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=develop&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=develop)
 - Issues: [![GitHub issues](https://img.shields.io/github/issues/priestjim/gen_rpc.svg)](https://github.com/priestjim/gen_rpc/issues)
 - License: [![GitHub license](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://raw.githubusercontent.com/priestjim/gen_rpc/master/LICENSE)
 - [Erlang Factory 2016 Talk](https://www.youtube.com/watch?feature=player_embedded&v=xiPnLACtNeo)
@@ -13,7 +13,7 @@
 
 To build this project you need to have the following:
 
-* **Erlang/OTP** >= 19.1
+* **Erlang/OTP** >= 25.0 (tested up to 29)
 
 * **git** >= 1.7
 
@@ -94,6 +94,8 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
 
+- `monitor_node(Node, Flag)`: Subscribes (`Flag` is `true`) or unsubscribes (`Flag` is `false`) the calling process to connection state changes of `Node`. The subscribed process receives a `{nodeup, Node}` message when the first `gen_rpc` connection to `Node` is established and a `{nodedown, Node}` message when the last connection to `Node` (including the ones opened with [per-key sharding](#per-key-sharding)) is gone. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process and node, and that subscriptions are removed automatically when the subscribed process exits. Always returns `true`.
+
 ### Per-Key Sharding
 
 `gen_rpc` supports multiple outgoing connections per node using a key of arbitrary type to differentiate between connections.
@@ -150,6 +152,10 @@ and pass them as the node list in the multi-node function.
 
 - `server_inactivity_timeout`: Inactivity period in **milliseconds** after which a server port will be closed (and hence have the TCP file descriptor freed).
 
+- `keepalive_interval`: Interval in **seconds** at which a client connection checks whether any data has been received from the server. If nothing was received, the client sends a ping that resets the server's inactivity timeout, so idle but healthy connections are not closed by `server_inactivity_timeout`, and a connection that cannot be written to anymore is detected and closed. Keepalive pings do not count as client activity so they do not postpone `client_inactivity_timeout`. Set to `0` to disable. Defaults to `60`.
+
+- `cookie_per_node`: Cookie used to authenticate connections with each node, see [Cookie per Node](#cookie-per-node). Defaults to `{internal, #{}}`, which uses the node's Erlang cookie for every node.
+
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
 
 - `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers).
@@ -168,21 +174,19 @@ For more information on how to enable `gen_rpc` to use your own logging facility
 
 `gen_rpc` supports SSL for inter-node communication. This allows secure communication and execution over insecure channels such as the internet, essentially allowing a **trully globally distributed Erlang/Elixir** setup. `gen_rpc` is very opinionated on how SSL should be configured and the bundled default options include:
 
-- A proper PFS-enabled cipher suite
+- TLS 1.3 AEAD cipher suites with a forward secret, elliptic curve only key exchange, using hybrid post-quantum ML-KEM groups (`x25519mlkem768`, `secp256r1mlkem768`, `secp384r1mlkem1024`) when the running Erlang/OTP release supports them (see [Erlang/OTP versions](#erlangotp-versions)), followed by `x25519`, `secp384r1` and `secp256r1`
 
 - Both server and client-based SSL node CN (Common Name) verification
 
-- Secure renegotiation
+- ECDSA only signature algorithms, for both the handshake and the certificate chain: node and CA certificates must be ECDSA (RSA certificates are rejected)
 
-- TLS 1.1/1.2 enforcement
+- TLS 1.3 enforcement (TLS 1.2 and older are not supported, as post-quantum key exchange is only defined for TLS 1.3)
 
 All of these settings can be found in `include/ssl.hrl` and overriden by redefining the necessary option in `ssl_client_options` and `ssl_server_options`. To actually use SSL support, you'll need to define in both `ssl_client_options` and `ssl_server_options`:
 
 - The public and private keys in PEM format, for the node you're running `gen_rpc` on, using the usual `certfile`, `keyfile` options.
 
 - The public key of the CA that signs the node's key and the public key(s) of CA that `gen_rpc` should trust, included in the file `cacertfile` points at.
-
-- Optionally, a Diffie-Hellman parameter file using the `dhfile` option.
 
 To generate your own self-signed CA and node certificates, numerous articles can be found online such as [this](https://help.github.com/enterprise/11.10.340/admin/articles/using-self-signed-ssl-certificates/).
 
@@ -193,19 +197,59 @@ Usually, the CA that will be signing your client and server SSL certificates wil
         {ssl_client_options, [
             {certfile, "priv/cert.pem"},
             {keyfile, "priv/cert.key"},
-            {cacertfile, "priv/ca.pem"},
-            {dhfile, "priv/dhparam.pem"}
+            {cacertfile, "priv/ca.pem"}
         ]},
         {ssl_server_options, [
             {certfile, "priv/cert.pem"},
             {keyfile, "priv/cert.key"},
-            {cacertfile, "priv/ca.pem"},
-            {dhfile, "priv/dhparam.pem"}
+            {cacertfile, "priv/ca.pem"}
         ]}
     ]}
 ```
 
+Only EC (ECDSA) certificates are supported, for example on the `prime256v1` (secp256r1), `secp384r1` or `secp521r1` curves. Sample certificates that are used by the test suite can be found in `priv/ec_ssl`. A node certificate and a CA can be generated with `openssl`:
+
+```bash
+openssl ecparam -name prime256v1 -genkey -noout -out ca.key.pem
+openssl req -x509 -new -key ca.key.pem -sha256 -days 3650 -subj "/CN=gen_rpc CA" -out ca.cert.pem
+openssl ecparam -name prime256v1 -genkey -noout -out node.key.pem
+openssl req -new -key node.key.pem -subj "/CN=gen_rpc@10.0.0.1" -out node.csr.pem
+openssl x509 -req -in node.csr.pem -CA ca.cert.pem -CAkey ca.key.pem -CAcreateserial -sha256 -days 365 -out node.cert.pem
+```
+
+The certificate Common Name must match the node's host name as `gen_rpc` verifies it.
+
 For multi-site deployments, a performant setup can be provisioned with edge `gen_rpc` nodes using SSL over the internet and plain TCP for internal data exchange. In that case, non-edge nodes can have `{ssl_server_port, false}` and `{default_client_driver, tcp}` and edge nodes can have their plain TCP port firewalled externally and `{default_client_driver, ssl}`.
+
+## Erlang/OTP versions
+
+`gen_rpc` requires Erlang/OTP 25.0 or later and is continuously tested on OTP 25 to 29 on Ubuntu 24.04 (see `.github/workflows/ci.yml`). The code is the same on every release, but some behaviour depends on the OTP version you build and run with:
+
+- **Post-quantum key exchange**: the hybrid ML-KEM groups are only offered if `ssl:groups/0` of the running release lists them (verified on OTP 29). `gen_rpc_helper:get_ssl_groups/0` filters the preferred list at runtime, so on older releases the connection transparently falls back to `x25519`, `secp384r1` and `secp256r1`. Both nodes of a connection must support a common group, and a PQ-capable node can talk to a classical one.
+
+- **TLS 1.3 only**: since TLS 1.2 is not enabled, every node that talks over SSL needs TLS 1.3, which all the supported releases provide. There is no fallback for peers running with older settings, upgrade all the nodes together.
+
+- **Tests**: the test suites start the second node with the `peer` module, which exists since OTP 25 (the deprecated `slave` module is not used).
+
+- **Building**: the code builds with `warnings_as_errors`, so deprecation warnings of newer releases fail the build. Variables that start with an underscore must not be reused once bound (OTP 29) and `maybe` is a reserved word. If you embed `gen_rpc` in a project that targets several releases, keep these in mind. The development profile pins `lager ~> 3.9.2`, which builds on all the supported releases.
+
+- **Docker integration tests**: the image is based on `erlang:29`. To test another release change the `FROM` line of `test/integration/Dockerfile`.
+
+## Cookie per Node
+
+By default `gen_rpc` authenticates connections using the Erlang cookie of the node (`erlang:get_cookie()`). If you need a different secret for each node you connect to, set `cookie_per_node` to `{internal, Map}` where `Map` is a map of `node_name => cookie`, for example:
+
+```erlang
+    {gen_rpc, [
+        {cookie_per_node, {internal, #{
+            'gen_rpc_slave@127.0.0.1' => slave_cookie
+        }}}
+    ]}
+```
+
+A client sends the cookie configured for the node it connects **to**, and a server validates that cookie against the one configured for the node that is connecting **to it**. So for two nodes `A` and `B` to talk to each other, `A` should have `B`'s cookie set to the shared secret and `B` should have `A`'s cookie set to the same secret. Nodes that are not in the map use the node's Erlang cookie. A connection with a mismatching cookie is rejected and the call returns `{badrpc, invalid_cookie}`.
+
+If you keep your cookies in an external service, set `cookie_per_node` to `{external, ModuleName}`. `ModuleName` should export `get_cookie(Node)` which should return the cookie (an atom) to use with `Node` for both outgoing and incoming connections.
 
 ## External Source Support
 
@@ -254,7 +298,9 @@ by running the command:
 
     make integration
 
-This will launch 3 slave containers and 1 master (change that by `NODES=5 make integration`) and will run the `integration_SUITE` CT test suite.
+The CT suites cover the local and remote functionality over the `tcp` and `ssl` drivers as well as node monitoring, cookie per node authentication and the client keepalive. The tests start a second Erlang node using the `peer` module and expect `epmd` to be running (`make epmd` takes care of that).
+
+This uses Docker Compose (`test/integration/compose.yaml`) to launch 3 node containers and 1 master on a private network and runs the `integration_SUITE` CT test suite on the master. The exit code of `make integration` is the exit code of the test run.
 
 ## Rationale
 
@@ -300,7 +346,9 @@ In order to achieve the mailbox-per-node feature, `gen_rpc` uses a very specific
 
 All `gen_tcp` processes are properly linked so that any TCP failure will cascade and close the TCP channels and any new connection will allocate a new process and port.
 
-An inactivity timeout has been implemented inside the `client` and `server` processes to free unused TCP connections after some time, in case that's needed.
+An inactivity timeout has been implemented inside the `client` and `server` processes to free unused TCP connections after some time, in case that's needed. Each `client` also runs a keepalive that periodically pings the server when the connection is idle, so that connections that should stay open are not closed by the server's inactivity timeout and broken connections are detected quickly.
+
+All `client` connections are registered with the `gen_rpc_monitor` process, which notifies the processes subscribed with `gen_rpc:monitor_node/2` when a node connects or disconnects.
 
 ## Performance
 
@@ -321,3 +369,5 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md)
 ### Contributors:
 
 - [Edward Tsang](https://github.com/linearregression)
+- [getong](https://github.com/getong)
+- [JianBo He](https://github.com/HJianBo)

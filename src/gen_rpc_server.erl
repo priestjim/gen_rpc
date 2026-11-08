@@ -35,7 +35,7 @@
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link(atom()) -> gen_statem:startlink_ret().
+-spec start_link(atom()) -> gen_statem:start_ret().
 start_link(Driver) when is_atom(Driver) ->
     case gen_rpc_helper:is_driver_enabled(Driver) of
         false -> ignore;
@@ -87,7 +87,7 @@ waiting_for_connection(internal, accept, #state{socket=ListSock, driver=Driver, 
     end.
 
 handle_event(EventType, Event, StateName, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=uknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
+    ?log(error, "event=unknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), EventType, Event]),
     {stop, {StateName, undefined_event, Event}, State}.
 

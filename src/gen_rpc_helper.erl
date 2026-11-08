@@ -17,7 +17,8 @@
 -include("types.hrl").
 
 %%% Public API
--export([peer_to_string/1,
+-export([to_string/1,
+        peer_to_string/1,
         socket_to_string/1,
         host_from_node/1,
         set_optimal_process_flags/0,
@@ -27,6 +28,7 @@
         get_server_driver_options/1,
         get_client_config_per_node/1,
         get_client_driver_options/1,
+        get_cookie_per_node/1,
         get_connect_timeout/0,
         get_send_timeout/1,
         get_rpc_module_control/0,
@@ -34,12 +36,24 @@
         get_call_receive_timeout/1,
         get_sbcast_receive_timeout/0,
         get_control_receive_timeout/0,
-        get_inactivity_timeout/1,
+        get_keepalive_interval/0,
+        get_ssl_groups/0,
+        get_client_inactivity_timeout/0,
+        get_server_inactivity_timeout/0,
         get_async_call_inactivity_timeout/0]).
 
 %%% ===================================================
 %%% Public API
 %%% ===================================================
+%% Convert any type to string
+-spec to_string(string() | atom() | binary()) -> string().
+to_string(Str) when is_list(Str) ->
+    Str;
+to_string(Atom) when is_atom(Atom) ->
+    erlang:atom_to_list(Atom);
+to_string(Bin) when is_binary(Bin) ->
+    binary:bin_to_list(Bin).
+
 %% Return the connected peer's IP
 -spec peer_to_string({inet:ip4_address(), inet:port_number()} | inet:ip4_address()) -> string().
 peer_to_string({{A,B,C,D}, Port}) when is_integer(A), is_integer(B), is_integer(C), is_integer(D), is_integer(Port) ->
@@ -160,6 +174,20 @@ get_client_config_per_node(Node) when is_atom(Node) ->
             get_client_config_from_map(Node, NodeMap)
     end.
 
+-spec get_cookie_per_node(atom()) -> atom() | {error, term()}.
+get_cookie_per_node(Node) when is_atom(Node) ->
+    {ok, CookieConfig} = application:get_env(?APP, cookie_per_node),
+    case CookieConfig of
+        {external, Module} when is_atom(Module) ->
+            case Module:get_cookie(Node) of
+                Cookie when is_atom(Cookie) -> Cookie;
+                {error, Reason} -> {error, Reason}
+            end;
+        {internal, NodeMap} ->
+            maps:get(Node, NodeMap, erlang:get_cookie())
+    end.
+
+
 -spec get_connect_timeout() -> timeout().
 get_connect_timeout() ->
     {ok, ConnTO} = application:get_env(?APP, connect_timeout),
@@ -210,13 +238,31 @@ get_send_timeout(undefined) ->
 get_send_timeout(Else) ->
     Else.
 
-%% Returns default inactivity timeouts for different modules
--spec get_inactivity_timeout(gen_rpc_client | gen_rpc_acceptor) -> timeout().
-get_inactivity_timeout(gen_rpc_client) ->
-    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
-    TTL;
+%% Returns the client keepalive interval in seconds, 0 disables the keepalive
+%% @doc Returns the TLS 1.3 key exchange groups used by default, in order of
+%% preference: hybrid post-quantum (ML-KEM) groups followed by elliptic curves.
+%% Groups that the running OTP release does not support are filtered out, since
+%% ML-KEM is not available on older releases.
+-spec get_ssl_groups() -> [atom()].
+get_ssl_groups() ->
+    Preferred = [x25519mlkem768, secp256r1mlkem768, secp384r1mlkem1024,
+                 x25519, secp384r1, secp256r1],
+    Supported = try ssl:groups() catch _:_ -> [x25519, secp384r1, secp256r1] end,
+    [Group || Group <- Preferred, lists:member(Group, Supported)].
 
-get_inactivity_timeout(gen_rpc_acceptor) ->
+-spec get_keepalive_interval() -> non_neg_integer().
+get_keepalive_interval() ->
+    {ok, Interval} = application:get_env(?APP, keepalive_interval),
+    Interval.
+
+%% Returns default inactivity timeouts for the client and the server
+-spec get_client_inactivity_timeout() -> timeout().
+get_client_inactivity_timeout() ->
+    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
+    TTL.
+
+-spec get_server_inactivity_timeout() -> timeout().
+get_server_inactivity_timeout() ->
     {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
     TTL.
 

@@ -9,7 +9,7 @@
 # distclean:        rebar3 as dev do clean -a
 #                   and explicitly delete other build artifacts
 # test: 		    rebar3 as test do ct -v, cover
-# travis:           Run the proper tests/coveralls in travis
+# integration:      Runs the Docker Compose based integration tests (3 nodes + 1 master)
 # dialyzer:         rebar3 as test do dialyzer
 # xref:             rebar3 as dev do xref
 # dist:             rebar3 as test do compile, ct -v -c, xref, dialyzer, cover
@@ -26,7 +26,7 @@
 .DEFAULT_GOAL := all
 
 # Build targets
-.PHONY: all test dialyzer xref spec dist travis
+.PHONY: all test dialyzer xref spec dist integration
 
 # Run targets
 .PHONY: shell shell-master shell-slave
@@ -42,8 +42,11 @@ PROJ = $(shell ls -1 src/*.src | sed -e 's/src//' | sed -e 's/\.app\.src//' | tr
 ERL = $(shell which erl)
 TYPER = $(shell which typer)
 
+# The integration tests run inside Docker containers and do not need a local Erlang
+ifneq ($(MAKECMDGOALS),integration)
 ifeq ($(ERL),)
 $(error "Erlang not available on this system")
+endif
 endif
 
 # If there is a rebar in the current directory, use it
@@ -58,26 +61,20 @@ endif
 
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 
-OTP_RELEASE = $(shell escript otp-release.escript)
+OTP_RELEASE = $(shell escript otp-release.escript 2>/dev/null)
 
 PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 
 # ======================
 # Integration test logic
 # ======================
-ifneq ($(shell which docker 2> /dev/null),)
+COMPOSE_FILE = test/integration/compose.yaml
 
-NODES ?= 3
-IMAGE = $(shell docker images -q gen_rpc:integration 2> /dev/null)
-
-image:
-ifeq ($(IMAGE),)
-	@cd test/integration && docker build --rm --pull -t gen_rpc:integration .
-endif
-
-integration: image
-	@export NODES=$(NODES) && cd test/integration && bash -c "./integration-tests.sh $(NODES)"
-endif
+integration:
+	@docker compose -f $(COMPOSE_FILE) up --build --abort-on-container-exit --exit-code-from master; \
+	RESULT=$$?; \
+	docker compose -f $(COMPOSE_FILE) down --volumes --remove-orphans; \
+	exit $$RESULT
 
 # =============================================================================
 # Build targets
@@ -100,9 +97,6 @@ spec: dialyzer
 
 dist: $(REBAR) test
 	@REBAR_PROFILE=dev $(REBAR) do dialyzer, xref
-
-travis: testclean dist
-	@REBAR_PROFILE=test $(REBAR) do coveralls send || true
 
 # =============================================================================
 # Run targets

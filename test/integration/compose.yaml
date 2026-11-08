@@ -1,0 +1,75 @@
+# Integration tests for gen_rpc using physically separated Erlang nodes.
+#
+# Run from the repository root:
+#
+#   docker compose -f test/integration/compose.yaml up --build \
+#       --abort-on-container-exit --exit-code-from master
+#
+# or simply `make integration`.
+
+# The image is built once by node1, every other service reuses it
+x-node: &node
+  image: gen_rpc:integration
+  pull_policy: never
+  # Start a bare Erlang node running only gen_rpc, the same way the dev shell does
+  command: >
+    bash -c 'erl -noshell -name gen_rpc@$${NODE_IP} -setcookie gen_rpc
+    -pa $$(ls -d _build/dev/lib/*/ebin)
+    -eval "{ok, _} = application:ensure_all_started(lager), {ok, _} = application:ensure_all_started(gen_rpc)"'
+  healthcheck:
+    test: ["CMD-SHELL", "epmd -names | grep -q 'name gen_rpc '"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+
+services:
+  node1:
+    <<: *node
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile
+    environment:
+      NODE_IP: 172.28.0.11
+    networks:
+      gen_rpc:
+        ipv4_address: 172.28.0.11
+
+  node2:
+    <<: *node
+    environment:
+      NODE_IP: 172.28.0.12
+    networks:
+      gen_rpc:
+        ipv4_address: 172.28.0.12
+
+  node3:
+    <<: *node
+    environment:
+      NODE_IP: 172.28.0.13
+    networks:
+      gen_rpc:
+        ipv4_address: 172.28.0.13
+
+  master:
+    image: gen_rpc:integration
+    pull_policy: never
+    depends_on:
+      node1:
+        condition: service_healthy
+      node2:
+        condition: service_healthy
+      node3:
+        condition: service_healthy
+    environment:
+      NODE: gen_rpc@172.28.0.10
+      NODES: 172.28.0.11:172.28.0.12:172.28.0.13
+    command: bash -c 'epmd -daemon && rebar3 as test do ct --suite test/ct/integration_SUITE'
+    networks:
+      gen_rpc:
+        ipv4_address: 172.28.0.10
+
+networks:
+  gen_rpc:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

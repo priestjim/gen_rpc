@@ -8,7 +8,7 @@
     [{description, "A scalable RPC library for Erlang-VM based languages"},
     {vsn, git},
     {mod, {gen_rpc_app, []}},
-    {registered, [gen_rpc_dispatcher]},
+    {registered, [gen_rpc_dispatcher, gen_rpc_monitor]},
     {maintainers, ["Panagiotis PJ Papadomitsos"]},
     {licenses, ["Apache 2.0"]},
     {links, [{"Github", "https://github.com/priestjim/gen_rpc"}]},
@@ -40,7 +40,7 @@
         %% Fine-graned driver/port control
         %% for each outgoing client connection
         %% The internal implementation expects
-        %% {internal, Map} whereh Map is a map of
+        %% {internal, Map} where Map is a map of
         %% node_name => {driver, port} or node_name => driver
         %% which uses the default port for the specified client driver
         %% If you have an external service that allows discovery
@@ -65,6 +65,7 @@
         %% Default receive timeout for sbcast
         {sbcast_receive_timeout, 15000},
         %% Inactivity timeout for client gen_server
+        %% Keepalive probes do not count as activity
         {client_inactivity_timeout, infinity},
         %% Inactivity timeout for server gen_server
         {server_inactivity_timeout, infinity},
@@ -79,7 +80,21 @@
         %% Seconds between probes
         {socket_keepalive_interval, 5},
         %% Probes lost to close the connection
-        {socket_keepalive_count, 2}
+        {socket_keepalive_count, 2},
+        %% Cookie per node configuration
+        %% Set a separate cookie per node by setting
+        %% {internal, #{ Node::atom() => Cookie()::atom() }}
+        %% If you have an external service that can validate an incoming
+        %% client has provided the correct cookie / send the correct cookie per
+        %% node to the server, you can change this setting to
+        %% {external, Module}
+        {cookie_per_node, {internal, #{}}},
+        %% Client keepalive interval in seconds. Every interval the client
+        %% checks whether it received any data from the server and, if it
+        %% did not, it sends a ping that keeps the server side of the
+        %% connection from timing out due to inactivity.
+        %% Set to 0 to disable
+        {keepalive_interval, 60}
     ]},
     {modules, []}]
 }.

@@ -18,7 +18,9 @@
 
 -define(DEFAULT_DRIVER, tcp).
 
--define(TEST_APPLICATION_ENV, [{sasl, errlog_type, error},
+-define(TEST_APPLICATION_ENV, [
+        {sasl, sasl_error_logger, false},
+        {sasl, errlog_type, error},
         {sasl, error_logger_mf_dir, false},
         {?APP, tcp_server_port, false},
         {?APP, ssl_server_port, false},
@@ -26,6 +28,7 @@
             ?MASTER => ?MASTER_PORT,
             ?SLAVE => ?SLAVE_PORT
         }}},
+        {?APP, cookie_per_node, {internal, #{}}},
         {?APP, connect_timeout, 500},
         {?APP, send_timeout, 500},
         {lager, log_root, "./log"},
@@ -34,11 +37,21 @@
         {lager, colored, false},
         {lager, handlers, [
             %% Commented out to reduce test output polution, uncomment during development
-            % {lager_common_test_backend, [debug,
-            %     {lager_default_formatter, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
-            %         "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}]},
-            {lager_file_backend, [{file, "messages.log"}, {level, debug}, {formatter, lager_default_formatter}, {size, 0}, {date, "$D0"}, {count, 7},
+            % {lager_common_test_backend, [
+            %     {level, debug},
+            %     {formatter, lager_default_formatter},
+            %     {formatter_config, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
+            %         "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}
+            % ]},
+            {lager_file_backend, [
+                {file, "messages.log"},
+                {level, debug},
+                {formatter, lager_default_formatter},
+                {size, 0},
+                {date, "$D0"},
+                {count, 7},
                 {formatter_config, ["[", date, " ", time, "] severity=", severity, " node=\"", {node, "undefined"}, "\" pid=\"", pid,
-                    "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}]}
+                    "\" module=", {module, "gen_rpc"}, " function=", {function, "undefined"}, " ", message, "\n"]}
+                ]}
         ]}
 ]).

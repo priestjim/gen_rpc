@@ -2,6 +2,20 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
+## 3.0.0
+
+- Deprecate support for Erlang < 25.0 and support up to Erlang/OTP 29
+- Support monitoring nodes with `gen_rpc:monitor_node/2`
+- Support EC SSL certificates, the RSA test certificates (`priv/ssl`) were removed
+- Support cookie per node configuration
+- Support external cookie validation mechanism
+- Support keepalive that actively keeps a client connection alive, configured by `keepalive_interval`
+- SSL now enforces TLS 1.3 only, with AEAD cipher suites, an EC-only key exchange and ECDSA-only signature algorithms (RSA certificates are rejected). The key exchange prefers hybrid post-quantum (ML-KEM) groups where available. TLS 1.2 and older and the legacy cipher suites are not supported anymore
+- Continuous integration moved from Travis CI to GitHub Actions and the Docker integration tests use Docker Compose (`make integration`)
+- The `authenticate_server/1` driver callback has been replaced by `authenticate_to_server/2` and drivers
+  need to implement `getstat/2`
+- Tests use the `peer` module instead of the deprecated `slave` module
+
 ## 2.1.0
 
 - Support multiple connections per node using aribtrary keys.
