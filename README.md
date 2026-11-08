@@ -19,7 +19,9 @@ To build this project you need to have the following:
 
 * **GNU make** >= 3.80
 
-* **rebar3** >= 3.2
+* **rebar3** >= 3.24 (3.28 and later require OTP 26 or newer)
+
+* **Docker** with the Compose plugin, only for the integration tests
 
 ## Usage
 
@@ -34,8 +36,8 @@ Getting started with `gen_rpc` is easy. First, add the appropriate dependency li
 Or if you're using `hex.pm`/`rebar3`:
 
 ```erlang
-{deps [
-    {gen_rpc, "~> 2.0"}
+{deps, [
+    {gen_rpc, "~> 3.0"}
 ]}.
 ```
 
@@ -45,9 +47,10 @@ Or if you're using Elixir/Mix:
 def project do
   [
     deps: [
-      {:gen_rpc, "~> 2.0"}
+      {:gen_rpc, "~> 3.0"}
     ]
   ]
+end
 ```
 
 Then, add `gen_rpc` as a dependency application to your `.app.src`/`.app` file:
@@ -94,6 +97,8 @@ For more information on what the functions below do, run `erl -man rpc`.
 
 - `eval_everywhere(Module, Function, Args)` and `eval_everywhere(NodesOrNodesWithKeys, Module, Function, Args)`: Multi-node version of the `cast` function.
 
+- `nodes()`: Returns the list of nodes `gen_rpc` currently has client connections to.
+
 - `monitor_node(Node, Flag)`: Subscribes (`Flag` is `true`) or unsubscribes (`Flag` is `false`) the calling process to connection state changes of `Node`. The subscribed process receives a `{nodeup, Node}` message when the first `gen_rpc` connection to `Node` is established and a `{nodedown, Node}` message when the last connection to `Node` (including the ones opened with [per-key sharding](#per-key-sharding)) is gone. Please note that in contrast to `erlang:monitor_node`, calling `gen_rpc:monitor_node` multiple times will result to only one registration per process and node, and that subscriptions are removed automatically when the subscribed process exits. Always returns `true`.
 
 ### Per-Key Sharding
@@ -107,7 +112,7 @@ and pass them as the node list in the multi-node function.
 
 ### Module version control
 
-`gen_rpc` supports executing RPC calls on remote nodes that are running only specific module versions. To leverage that feature, in place of `Module` in the section above, use `{Module, Version}`. If the remote `module` is not on the version requested a `{badrpc,incompatible]` will be returned.
+`gen_rpc` supports executing RPC calls on remote nodes that are running only specific module versions. To leverage that feature, in place of `Module` in the section above, use `{Module, Version}`. If the remote `module` is not on the version requested a `{badrpc,incompatible}` will be returned.
 
 ## Application settings
 
@@ -158,7 +163,7 @@ and pass them as the node list in the multi-node function.
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
 
-- `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers).
+- `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers, on Linux and macOS only).
 
 - `socket_keepalive_interval`: Seconds between keepalive probes.
 
@@ -217,7 +222,7 @@ openssl req -new -key node.key.pem -subj "/CN=gen_rpc@10.0.0.1" -out node.csr.pe
 openssl x509 -req -in node.csr.pem -CA ca.cert.pem -CAkey ca.key.pem -CAcreateserial -sha256 -days 365 -out node.cert.pem
 ```
 
-The certificate Common Name must match the node's host name as `gen_rpc` verifies it.
+The certificate Common Name must be the full name of the node, such as `gen_rpc@10.0.0.1`, as `gen_rpc` verifies it against the name of the node it connects to.
 
 For multi-site deployments, a performant setup can be provisioned with edge `gen_rpc` nodes using SSL over the internet and plain TCP for internal data exchange. In that case, non-edge nodes can have `{ssl_server_port, false}` and `{default_client_driver, tcp}` and edge nodes can have their plain TCP port firewalled externally and `{default_client_driver, ssl}`.
 
@@ -254,8 +259,8 @@ If you keep your cookies in an external service, set `cookie_per_node` to `{exte
 ## External Source Support
 
 `gen_rpc` can call an external module to provide driver/port mappings in case you want to use an external discovery service like `etcd`
-for node configuration management. The module should implement the `gen_rpc_external_source` behaviour which takes the `Node` as an argument and should return either `{Driver, Port}` (`Driver` being `tcp` or `ssl` and `Port` being the port the remote node's
-`gen_rpc`'s driver is listening in) or `{error, Reason}` (if the service is unavailable). To set it, change `client_config_per_node` from the default of `{internal, #{}}` to `{external, ModuleName}` where `ModuleName` is the module that implements the `gen_rpc_external_source` behaviour.
+for node configuration management. The module should export `get_config(Node)`, which takes the `Node` as an argument and should return either `{Driver, Port}` (`Driver` being `tcp` or `ssl` and `Port` being the port the remote node's
+`gen_rpc`'s driver is listening in) or `{error, Reason}` (if the service is unavailable). To set it, change `client_config_per_node` from the default of `{internal, #{}}` to `{external, ModuleName}` where `ModuleName` is the module that exports `get_config/1`.
 
 ## Build Targets
 
@@ -336,7 +341,7 @@ In order to achieve the mailbox-per-node feature, `gen_rpc` uses a very specific
 
 - The `gen_rpc server` server will ask the `acceptor` supervisor to launch a new `acceptor` process and hands it off the new socket connection.
 
-- The `acceptor` takes over the new socket and authenticates the `client` with the current Erlang cookie and any extra protocol-level authentication supported by the selected driver.
+- The `acceptor` takes over the new socket and authenticates the `client` with the cookie configured for the connecting node (the Erlang cookie unless `cookie_per_node` says otherwise, see [Cookie per Node](#cookie-per-node)) and any extra protocol-level authentication supported by the selected driver.
 
 - The `client` finally encodes the request (`call`, `cast` etc.) along with some metadata (the caller's PID and a reference) and sends it over the TCP channel. In case of an `async call`, the `client` also launches a process that will be responsible for handing the server's reply to the requester.
 
