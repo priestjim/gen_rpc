@@ -223,7 +223,7 @@ For multi-site deployments, a performant setup can be provisioned with edge `gen
 
 ## Erlang/OTP versions
 
-`gen_rpc` requires Erlang/OTP 25.0 or later and is continuously tested on OTP 25 to 29 (see `.github/workflows/ci.yml`). The code is the same on every release, but some behaviour depends on the OTP version you build and run with:
+`gen_rpc` requires Erlang/OTP 25.0 or later and is continuously tested on OTP 25 to 29 on Ubuntu 24.04 (see `.github/workflows/ci.yml`). The code is the same on every release, but some behaviour depends on the OTP version you build and run with:
 
 - **Post-quantum key exchange**: the hybrid ML-KEM groups are only offered if `ssl:groups/0` of the running release lists them (verified on OTP 29). `gen_rpc_helper:get_ssl_groups/0` filters the preferred list at runtime, so on older releases the connection transparently falls back to `x25519`, `secp384r1` and `secp256r1`. Both nodes of a connection must support a common group, and a PQ-capable node can talk to a classical one.
 

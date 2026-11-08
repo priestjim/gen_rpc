@@ -42,8 +42,11 @@ PROJ = $(shell ls -1 src/*.src | sed -e 's/src//' | sed -e 's/\.app\.src//' | tr
 ERL = $(shell which erl)
 TYPER = $(shell which typer)
 
+# The integration tests run inside Docker containers and do not need a local Erlang
+ifneq ($(MAKECMDGOALS),integration)
 ifeq ($(ERL),)
 $(error "Erlang not available on this system")
+endif
 endif
 
 # If there is a rebar in the current directory, use it
@@ -58,7 +61,7 @@ endif
 
 REBAR_URL = https://s3.amazonaws.com/rebar3/rebar3
 
-OTP_RELEASE = $(shell escript otp-release.escript)
+OTP_RELEASE = $(shell escript otp-release.escript 2>/dev/null)
 
 PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 

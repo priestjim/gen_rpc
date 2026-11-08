@@ -13,10 +13,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Pin the runner image: ubuntu-latest moves to 26.04, for which erlef/setup-beam
+# only provides OTP 26 and later. ubuntu-24.04 covers OTP 24.3 up to 29.
 jobs:
   test:
     name: CT on OTP ${{ matrix.otp }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +56,7 @@ jobs:
 
   analysis:
     name: Dialyzer and Xref
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: erlef/setup-beam@v1
@@ -73,7 +75,7 @@ jobs:
 
   integration:
     name: Integration tests (Docker Compose)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
