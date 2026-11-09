@@ -14,11 +14,11 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
-%%% Include this library's name macro
--include("app.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 %%% Include helpful guard macros
 -include("guards.hrl").
-%%% Include helpful guard macros
+%%% Include helpful types
 -include("types.hrl").
 
 %%% Local state
@@ -28,10 +28,11 @@
         driver_closed :: atom(),
         driver_error :: atom(),
         keepalive :: gen_rpc_keepalive:keepalive(),
+        send_timeout :: timeout() | undefined, % The send timeout set on the socket, undefined if unknown
         last_activity :: integer()}). % Monotonic time (ms) of the last non-keepalive activity
 
 %%% Supervisor functions
--export([start_link/1, stop/1]).
+-export([start/1, start_link/2, stop/1]).
 
 %%% Server functions
 -export([call/3, call/4, call/5, call/6, cast/3, cast/4, cast/5]).
@@ -49,15 +50,41 @@
         handle_info/2, terminate/2, code_change/3]).
 
 %%% Process exports
--export([async_call_worker/5, cast_worker/4]).
+-export([async_call_worker/5, cast_worker/3]).
 
 %%% ===================================================
 %%% Supervisor functions
 %%% ===================================================
--spec start_link(node_or_tuple()) -> gen_server:start_ret().
-start_link(NodeOrTuple) when ?is_node_or_tuple(NodeOrTuple) ->
+%% Connects and authenticates to the server of a node and starts the client
+%% process that owns the connection. The connection is established before the
+%% client starts so that a node that is slow to answer does not hold up the
+%% client supervisor, which starts its children one at a time
+-spec start(node_or_tuple()) -> {ok, pid()} | {error, term()}.
+start(NodeOrTuple) when ?is_node_or_tuple(NodeOrTuple) ->
+    Node = case NodeOrTuple of
+        {TNode,_Key} -> TNode;
+        TNode -> TNode
+    end,
+    case connect(Node) of
+        {ok, Driver, Socket} ->
+            {DriverMod, _DriverClosed, _DriverError} = gen_rpc_helper:get_client_driver_options(Driver),
+            case gen_rpc_client_sup:start_child(NodeOrTuple, {Driver, Socket}) of
+                {ok, Pid} ->
+                    %% The socket is passive until the client activates it
+                    ok = DriverMod:set_controlling_process(Socket, Pid),
+                    {ok, Pid};
+                {error, _Reason} = Error ->
+                    ok = DriverMod:close(Socket),
+                    Error
+            end;
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+-spec start_link(node_or_tuple(), {atom(), term()}) -> gen_server:start_ret().
+start_link(NodeOrTuple, {Driver, _Socket} = Connection) when ?is_node_or_tuple(NodeOrTuple), is_atom(Driver) ->
     PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
-    gen_server:start_link({local,PidName}, ?MODULE, {NodeOrTuple}, []).
+    gen_server:start_link({local,PidName}, ?MODULE, {NodeOrTuple, Connection}, []).
 
 -spec stop(node_or_tuple()) -> ok.
 stop(NodeOrTuple) when ?is_node_or_tuple(NodeOrTuple) ->
@@ -89,33 +116,19 @@ call(NodeOrTuple, M, F, A, RecvTO) ->
 call(NodeOrTuple, M, F, A, RecvTO, SendTO) when ?is_node_or_tuple(NodeOrTuple), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A),
                                          RecvTO =:= undefined orelse ?is_timeout(RecvTO),
                                          SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    %% Create a unique name for the client because we register as such
-    PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
-    case erlang:whereis(PidName) of
-        undefined ->
-            ?log(info, "event=client_process_not_found target=\"~p\" action=spawning_client", [NodeOrTuple]),
-            case gen_rpc_dispatcher:start_client(NodeOrTuple) of
-                {ok, NewPid} ->
-                    %% We take care of CALL inside the gen_server
-                    %% This is not resilient enough if the caller's mailbox is full
-                    %% but it's good enough for now
-                    try
-                        gen_server:call(NewPid, {{call,M,F,A}, SendTO}, gen_rpc_helper:get_call_receive_timeout(RecvTO))
-                    catch
-                        exit:{timeout,_Reason} -> {badrpc,timeout};
-                        exit:OtherReason -> {badrpc, {unknown_error, OtherReason}}
-                    end;
-                {error, Reason} ->
-                    Reason
-            end;
-        Pid ->
-            ?log(debug, "event=client_process_found pid=\"~p\" target=\"~p\"", [Pid, NodeOrTuple]),
+    case get_client(NodeOrTuple) of
+        {ok, Pid} ->
+            %% We take care of CALL inside the gen_server
+            %% This is not resilient enough if the caller's mailbox is full
+            %% but it's good enough for now
             try
                 gen_server:call(Pid, {{call,M,F,A}, SendTO}, gen_rpc_helper:get_call_receive_timeout(RecvTO))
             catch
                 exit:{timeout,_Reason} -> {badrpc,timeout};
                 exit:OtherReason -> {badrpc, {unknown_error, OtherReason}}
-            end
+            end;
+        {error, Reason} ->
+            Reason
     end.
 
 %% Simple server cast with no args and default timeout values
@@ -133,7 +146,7 @@ cast(NodeOrTuple, M, F, A) ->
 -spec cast(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> true.
 cast(NodeOrTuple, M, F, A, SendTO) when ?is_node_or_tuple(NodeOrTuple), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A),
                                  SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    _WorkerPid = erlang:spawn(?MODULE, cast_worker, [NodeOrTuple, {cast,M,F,A}, undefined, SendTO]),
+    ok = cast_to_client(NodeOrTuple, {cast,M,F,A}, SendTO),
     true.
 
 %% Evaluate {M, F, A} on connected nodes.
@@ -150,7 +163,7 @@ eval_everywhere(Nodes, M, F, A) ->
 -spec eval_everywhere([atom()], atom() | tuple(), atom() | function(), list(), timeout() | undefined) -> abcast.
 eval_everywhere(Nodes, M, F, A, SendTO) when is_list(Nodes), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A),
                                              SendTO =:= undefined orelse ?is_timeout(SendTO) ->
-    _ = [erlang:spawn(?MODULE, cast_worker, [Node, {cast,M,F,A}, abcast, SendTO]) || Node <- Nodes],
+    _ = [cast_to_client(Node, {cast,M,F,A}, SendTO) || Node <- Nodes],
     abcast.
 
 %% Simple server async_call with no args
@@ -172,12 +185,12 @@ yield(Key) ->
     Result.
 
 %% Simple server non-blocking yield with key, default timeout value of 0
--spec nb_yield(tuple()) -> {value,term()} | {badrpc,term()}.
+-spec nb_yield(tuple()) -> {value,term()} | timeout.
 nb_yield(Key)->
     nb_yield(Key, 0).
 
 %% Simple server non-blocking yield with key and custom timeout value
--spec nb_yield(tuple(), timeout()) -> {value,term()} | {badrpc,term()}.
+-spec nb_yield(tuple(), timeout()) -> {value,term()} | timeout.
 nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Timeout) ->
     Pid ! {self(), Ref, yield},
     receive
@@ -185,7 +198,7 @@ nb_yield({Pid,Ref}, Timeout) when is_pid(Pid), is_reference(Ref), ?is_timeout(Ti
             {value,Result}
     after
         Timeout ->
-            ?log(debug, "event=nb_yield_timeout async_call_pid=\"~p\" async_call_ref=\"~p\"", [Pid, Ref]),
+            ?log_debug("event=nb_yield_timeout async_call_pid=\"~p\" async_call_ref=\"~p\"", [Pid, Ref]),
             timeout
     end.
 
@@ -199,8 +212,7 @@ multicall(M, F, A, Timeout) when is_atom(M) orelse is_tuple(M), is_atom(F), is_l
     multicall([node()|gen_rpc:nodes()], M, F, A, Timeout);
 
 multicall(Nodes, M, F, A) when is_list(Nodes), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A) ->
-    Keys = [async_call(Node, M, F, A) || Node <- Nodes],
-    parse_multicall_results(Keys, Nodes, undefined).
+    multicall(Nodes, M, F, A, infinity).
 
 -spec multicall(list(), atom() | tuple(), atom(), list(), timeout()) -> {list(), list()}.
 multicall(Nodes, M, F, A, Timeout) when is_list(Nodes), is_atom(M) orelse is_tuple(M), is_atom(F), is_list(A), ?is_timeout(Timeout) ->
@@ -213,7 +225,7 @@ abcast(Name, Msg) when is_atom(Name) ->
 
 -spec abcast(list(), atom(), term()) -> abcast.
 abcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
-    _ = [erlang:spawn(?MODULE, cast_worker, [Node, {abcast,Name,Msg}, abcast, undefined]) || Node <- Nodes],
+    _ = [cast_to_client(Node, {abcast,Name,Msg}, undefined) || Node <- Nodes],
     abcast.
 
 -spec sbcast(atom(), term()) -> {list(), list()}.
@@ -223,75 +235,49 @@ sbcast(Name, Msg) when is_atom(Name) ->
 -spec sbcast(list(), atom(), term()) -> {list(), list()}.
 sbcast(Nodes, Name, Msg) when is_list(Nodes), is_atom(Name) ->
     Ref = erlang:make_ref(),
-    Workers = [{erlang:spawn(?MODULE, cast_worker, [Node, {sbcast, Name, Msg, {self(), Ref, Node}}, undefined, undefined]), Node} || Node <- Nodes],
-    parse_sbcast_results(Workers, Ref).
+    _ = [cast_to_client(Node, {sbcast,Name,Msg,{self(),Ref,Node}}, undefined) || Node <- Nodes],
+    parse_sbcast_results(Nodes, Ref).
 
 %%% ===================================================
 %%% Behaviour callbacks
 %%% ===================================================
 %% If we're called with a key, remove it, the key is only relevant
 %% at the process name level
-init({{Node,_Key}}) ->
-    init({Node});
+init({{Node,_Key}, Connection}) ->
+    init({Node, Connection});
 
-init({Node}) ->
-    ok = gen_rpc_helper:set_optimal_process_flags(),
-    case gen_rpc_helper:get_client_config_per_node(Node) of
-        {error, Reason} ->
-            ?log(error, "event=external_source_error action=falling_back_to_local reason=\"~s\"", [Reason]),
-            {stop, {badrpc, {external_source_error, Reason}}};
-        {Driver, Port} ->
-            {DriverMod, DriverClosed, DriverError} = gen_rpc_helper:get_client_driver_options(Driver),
-            ?log(info, "event=initializing_client driver=~s node=\"~s\" port=~B", [Driver, Node, Port]),
-            case DriverMod:connect(Node, Port) of
-                {ok, Socket} ->
-                    case DriverMod:authenticate_to_server(Node, Socket) of
-                        ok ->
-                            ok = gen_rpc_monitor:register_node(Node, self()),
-                            KeepaliveFun = keepalive_probe(DriverMod, Socket),
-                            case gen_rpc_keepalive:start(KeepaliveFun, gen_rpc_helper:get_keepalive_interval(), {keepalive, check}) of
-                                {ok, KeepAlive} ->
-                                    State = #state{socket=Socket,
-                                                   driver=Driver,
-                                                   driver_mod=DriverMod,
-                                                   driver_closed=DriverClosed,
-                                                   driver_error=DriverError,
-                                                   keepalive=KeepAlive,
-                                                   last_activity=erlang:monotonic_time(millisecond)},
-                                    {ok, State, remaining_timeout(State)};
-                                {error, Error} ->
-                                    ?log(error, "event=start_keepalive_failed driver=~s reason=\"~p\"", [Driver, Error]),
-                                    {stop, {badrpc, Error}}
-                            end;
-                        {error, ReasonTuple} ->
-                            ?log(error, "event=client_authentication_failed driver=~s reason=\"~p\"", [Driver, ReasonTuple]),
-                            {stop, ReasonTuple}
-                    end;
-                {error, {_Class,Reason}} ->
-                    %% This should be badtcp but to conform with
-                    %% the RPC library we return badrpc
-                    {stop, {badrpc,Reason}}
-            end
+init({Node, {Driver, Socket}}) ->
+    ok = gen_rpc_helper:set_optimal_process_flags(true),
+    {DriverMod, DriverClosed, DriverError} = gen_rpc_helper:get_client_driver_options(Driver),
+    ok = gen_rpc_monitor:register_node(Node, self()),
+    KeepaliveFun = keepalive_probe(DriverMod, Socket),
+    case gen_rpc_keepalive:start(KeepaliveFun, gen_rpc_helper:get_keepalive_interval(), {keepalive, check}) of
+        {ok, KeepAlive} ->
+            State = #state{socket=Socket,
+                           driver=Driver,
+                           driver_mod=DriverMod,
+                           driver_closed=DriverClosed,
+                           driver_error=DriverError,
+                           keepalive=KeepAlive,
+                           send_timeout=undefined,
+                           last_activity=erlang:monotonic_time(millisecond)},
+            {ok, State, remaining_timeout(State)};
+        {error, Error} ->
+            ?log(error, "event=start_keepalive_failed driver=~s reason=\"~p\"", [Driver, Error]),
+            {stop, {badrpc, Error}}
     end.
 
 %% This is the actual CALL handler
-handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+handle_call({{call,_M,_F,_A} = PacketTuple, SendTO}, Caller, #state{socket=Socket, driver=Driver} = State) ->
     Packet = erlang:term_to_binary({PacketTuple, Caller}),
-    ?log(debug, "message=call event=constructing_call_term driver=~s socket=\"~s\" caller=\"~p\"",
+    ?log_debug("message=call event=constructing_call_term driver=~s socket=\"~s\" caller=\"~p\"",
          [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
-    ok = DriverMod:set_send_timeout(Socket, SendTO),
-    case DriverMod:send(Socket, Packet) of
+    %% We need to enable the socket and perform the call only if the call succeeds
+    case transmit(call, Packet, SendTO, true, State) of
+        {ok, NewState} ->
+            noreply_touched(NewState);
         {error, Reason} ->
-            ?log(error, "message=call event=transmission_failed driver=~s socket=\"~s\" caller=\"~p\" reason=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Caller, Reason]),
-            {stop, Reason, Reason, State};
-        ok ->
-            ?log(debug, "message=call event=transmission_succeeded driver=~s socket=\"~s\" caller=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
-            %% We need to enable the socket and perform the call only if the call succeeds
-            ok = DriverMod:activate_socket(Socket),
-            NewState = touch(State),
-            {noreply, NewState, remaining_timeout(NewState)}
+            {stop, Reason, Reason, State}
     end;
 
 %% Catch-all for calls - die if we get a message we don't expect
@@ -313,24 +299,17 @@ handle_cast({{sbcast,_Name,_Msg,_Caller} = PacketTuple, undefined}, State) ->
     send_cast(PacketTuple, State, undefined, true);
 
 %% This is the actual ASYNC CALL handler
-handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+handle_cast({{async_call,_M,_F,_A} = PacketTuple, Caller, Ref}, #state{socket=Socket} = State) ->
     Packet = erlang:term_to_binary({PacketTuple, {Caller,Ref}}),
-    ?log(debug, "message=async_call event=constructing_async_call_term socket=\"~s\" worker_pid=\"~p\" async_call_ref=\"~p\"",
+    ?log_debug("message=async_call event=constructing_async_call_term socket=\"~s\" worker_pid=\"~p\" async_call_ref=\"~p\"",
          [gen_rpc_helper:socket_to_string(Socket), Caller, Ref]),
-    ok = DriverMod:set_send_timeout(Socket, undefined),
-    case DriverMod:send(Socket, Packet) of
+    %% We need to enable the socket and perform the call only if the call succeeds
+    %% Reply will be handled from the worker
+    case transmit(async_call, Packet, undefined, true, State) of
+        {ok, NewState} ->
+            noreply_touched(NewState);
         {error, Reason} ->
-            ?log(error, "message=async_call event=transmission_failed driver=~s socket=\"~s\" worker_pid=\"~p\" call_ref=\"~p\" reason=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Caller, Ref, Reason]),
-            {stop, Reason, Reason, State};
-        ok ->
-            ?log(debug, "message=async_call event=transmission_succeeded driver=~s socket=\"~s\" worker_pid=\"~p\" call_ref=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Caller, Ref]),
-            %% We need to enable the socket and perform the call only if the call succeeds
-            ok = DriverMod:activate_socket(Socket),
-            %% Reply will be handled from the worker
-            NewState = touch(State),
-            {noreply, NewState, remaining_timeout(NewState)}
+            {stop, Reason, Reason, State}
     end;
 
 %% Catch-all for casts - die if we get a message we don't expect
@@ -343,15 +322,15 @@ handle_cast(Msg, #state{socket=Socket, driver=Driver} = State) ->
 handle_info({Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
     _Reply = case erlang:binary_to_term(Data) of
         {call, Caller, Reply} ->
-            ?log(debug, "event=call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
+            ?log_debug("event=call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
             gen_server:reply(Caller, Reply);
         {async_call, {Caller, Ref}, Reply} ->
-            ?log(debug, "event=async_call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
+            ?log_debug("event=async_call_reply_received driver=~s socket=\"~s\" caller=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller]),
             Caller ! {self(), Ref, async_call, Reply};
         {sbcast, {Caller, Ref, Node}, Reply} ->
-            ?log(debug, "event=sbcast_reply_received driver=~s socket=\"~s\" caller=\"~p\" reference=\"~p\" action=sending_reply",
+            ?log_debug("event=sbcast_reply_received driver=~s socket=\"~s\" caller=\"~p\" reference=\"~p\" action=sending_reply",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), Caller, Ref]),
             Caller ! {Ref, Node, Reply};
         OtherData ->
@@ -359,8 +338,7 @@ handle_info({Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mo
                  [Driver, gen_rpc_helper:socket_to_string(Socket), OtherData])
     end,
     ok = DriverMod:activate_socket(Socket),
-    NewState = touch(State),
-    {noreply, NewState, remaining_timeout(NewState)};
+    noreply_touched(State);
 
 handle_info({DriverClosed, Socket}, #state{socket=Socket, driver=Driver, driver_closed=DriverClosed} = State) ->
     ?log(error, "message=channel_closed driver=~s socket=\"~s\" action=stopping", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
@@ -424,6 +402,11 @@ keepalive_probe(DriverMod, Socket) ->
 touch(State) ->
     State#state{last_activity=erlang:monotonic_time(millisecond)}.
 
+%% Record client activity and wait for the next message
+noreply_touched(State) ->
+    NewState = touch(State),
+    {noreply, NewState, remaining_timeout(NewState)}.
+
 %% Time left until the client inactivity timeout is reached
 remaining_timeout(#state{last_activity=LastActivity}) ->
     case gen_rpc_helper:get_client_inactivity_timeout() of
@@ -433,113 +416,146 @@ remaining_timeout(#state{last_activity=LastActivity}) ->
             erlang:max(0, TTL - (erlang:monotonic_time(millisecond) - LastActivity))
     end.
 
-send_cast(PacketTuple, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State, SendTO, Activate) ->
+send_cast(PacketTuple, #state{socket=Socket, driver=Driver} = State, SendTO, Activate) ->
     Packet = erlang:term_to_binary(PacketTuple),
-    ?log(debug, "event=constructing_cast_term driver=~s socket=\"~s\" cast=\"~p\"",
+    ?log_debug("event=constructing_cast_term driver=~s socket=\"~s\" cast=\"~p\"",
          [Driver, gen_rpc_helper:socket_to_string(Socket), PacketTuple]),
-    ok = DriverMod:set_send_timeout(Socket, SendTO),
-    case DriverMod:send(Socket, Packet) of
+    case transmit(cast, Packet, SendTO, Activate, State) of
+        {ok, NewState} ->
+            noreply_touched(NewState);
         {error, Reason} ->
-            ?log(error, "message=cast event=transmission_failed driver=~s socket=\"~s\" reason=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
-            {stop, Reason, State};
-        ok ->
-            ok = if
-                Activate =:= true -> DriverMod:activate_socket(Socket);
-                true -> ok
-            end,
-            ?log(debug, "message=cast event=transmission_succeeded driver=~s socket=\"~s\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            NewState = touch(State),
-            {noreply, NewState, remaining_timeout(NewState)}
+            {stop, Reason, State}
     end.
 
-send_ping(#state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+send_ping(State) ->
     Packet = erlang:term_to_binary(ping),
-    ok = DriverMod:set_send_timeout(Socket, undefined),
-    case DriverMod:send(Socket, Packet) of
+    %% Keep the socket active so that we get notified of a closed connection
+    case transmit(ping, Packet, undefined, true, State) of
+        {ok, NewState} ->
+            {noreply, NewState, remaining_timeout(NewState)};
         {error, Reason} ->
-            ?log(error, "message=ping event=transmission_failed driver=~s socket=\"~s\" reason=\"~p\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
-            {stop, Reason, State};
-        ok ->
-            ?log(debug, "message=ping event=transmission_succeeded driver=~s socket=\"~s\"",
-                 [Driver, gen_rpc_helper:socket_to_string(Socket)]),
-            %% Keep the socket active so that we get notified of a closed connection
-            ok = DriverMod:activate_socket(Socket),
-            {noreply, State, remaining_timeout(State)}
+            {stop, Reason, State}
     end.
 
-cast_worker(NodeOrTuple, Cast, Ret, SendTO) ->
+%% Send a packet to the server and optionally re-enable the socket afterwards.
+%% Returns the new state since the send timeout of the socket might change
+transmit(Type, Packet, SendTO, Activate, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State) ->
+    NewState = set_send_timeout(SendTO, State),
+    case DriverMod:send(Socket, Packet) of
+        {error, Reason} ->
+            ?log(error, "message=~s event=transmission_failed driver=~s socket=\"~s\" reason=\"~p\"",
+                 [Type, Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
+            {error, Reason};
+        ok ->
+            ?log_debug("message=~s event=transmission_succeeded driver=~s socket=\"~s\"",
+                 [Type, Driver, gen_rpc_helper:socket_to_string(Socket)]),
+            ok = case Activate of
+                true -> DriverMod:activate_socket(Socket);
+                false -> ok
+            end,
+            {ok, NewState}
+    end.
+
+%% Set the send timeout of the socket, undefined is the configured default.
+%% This is a call to the port so only do it if the timeout actually changes
+set_send_timeout(SendTO, #state{socket=Socket, driver_mod=DriverMod, send_timeout=CurrentSendTO} = State) ->
+    case gen_rpc_helper:get_send_timeout(SendTO) of
+        CurrentSendTO ->
+            State;
+        NewSendTO ->
+            ok = DriverMod:set_send_timeout(Socket, NewSendTO),
+            State#state{send_timeout=NewSendTO}
+    end.
+
+%% Connect and authenticate to the server of a node
+connect(Node) ->
+    case gen_rpc_helper:get_client_config_per_node(Node) of
+        {error, Reason} ->
+            ?log(error, "event=external_source_error action=stopping reason=\"~p\"", [Reason]),
+            {error, {badrpc, {external_source_error, Reason}}};
+        {Driver, Port} ->
+            {DriverMod, _DriverClosed, _DriverError} = gen_rpc_helper:get_client_driver_options(Driver),
+            ?log(info, "event=initializing_client driver=~s node=\"~s\" port=~B", [Driver, Node, Port]),
+            case DriverMod:connect(Node, Port) of
+                {ok, Socket} ->
+                    case DriverMod:authenticate_to_server(Node, Socket) of
+                        ok ->
+                            {ok, Driver, Socket};
+                        {error, ReasonTuple} ->
+                            ?log(error, "event=client_authentication_failed driver=~s reason=\"~p\"", [Driver, ReasonTuple]),
+                            {error, ReasonTuple}
+                    end;
+                {error, {_Class,Reason}} ->
+                    %% This should be badtcp but to conform with
+                    %% the RPC library we return badrpc
+                    {error, {badrpc,Reason}}
+            end
+    end.
+
+%% Returns the process of the client of a node, asking the dispatcher
+%% to start it if it does not exist
+get_client(NodeOrTuple) ->
     %% Create a unique name for the client because we register as such
     PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
     case erlang:whereis(PidName) of
         undefined ->
             ?log(info, "event=client_process_not_found target=\"~p\" action=spawning_client", [NodeOrTuple]),
-            case gen_rpc_dispatcher:start_client(NodeOrTuple) of
-                {ok, NewPid} ->
-                    %% We take care of CALL inside the gen_server
-                    %% This is not resilient enough if the caller's mailbox is full
-                    %% but it's good enough for now
-                    ok = gen_server:cast(NewPid, {Cast,SendTO}),
-                    Ret;
-                {error, _Reason} ->
-                    Ret
-            end;
+            gen_rpc_dispatcher:start_client(NodeOrTuple);
         Pid ->
-            ?log(debug, "event=client_process_found pid=\"~p\" target=\"~p\"", [Pid, NodeOrTuple]),
-            ok = gen_server:cast(Pid, {Cast,SendTO}),
-            Ret
+            ?log_debug("event=client_process_found pid=\"~p\" target=\"~p\"", [Pid, NodeOrTuple]),
+            {ok, Pid}
+    end.
+
+%% Send a cast to the client of a node. If the client is already running this
+%% happens right away. Starting a client can block while connecting to the
+%% node, so that is left to a separate process
+cast_to_client(NodeOrTuple, Cast, SendTO) ->
+    case erlang:whereis(gen_rpc_helper:make_process_name("client", NodeOrTuple)) of
+        undefined ->
+            _WorkerPid = erlang:spawn(?MODULE, cast_worker, [NodeOrTuple, Cast, SendTO]),
+            ok;
+        Pid ->
+            gen_server:cast(Pid, {Cast,SendTO})
+    end.
+
+cast_worker(NodeOrTuple, Cast, SendTO) ->
+    case get_client(NodeOrTuple) of
+        {ok, Pid} ->
+            gen_server:cast(Pid, {Cast,SendTO});
+        {error, _Reason} ->
+            ok
     end.
 
 async_call_worker(NodeOrTuple, M, F, A, Ref) ->
     TTL = gen_rpc_helper:get_async_call_inactivity_timeout(),
-    PidName = gen_rpc_helper:make_process_name("client", NodeOrTuple),
-    SrvPid = case erlang:whereis(PidName) of
-        undefined ->
-            ?log(info, "event=client_process_not_found target=\"~p\" action=spawning_client", [NodeOrTuple]),
-            case gen_rpc_dispatcher:start_client(NodeOrTuple) of
-                {ok, NewPid} ->
-                    ok = gen_server:cast(NewPid, {{async_call,M,F,A}, self(), Ref}),
-                    NewPid;
-                {error, {badrpc,_} = RpcError} ->
-                    RpcError
-            end;
-        Pid ->
-            ?log(debug, "event=client_process_found pid=\"~p\" target=\"~p\"", [Pid, NodeOrTuple]),
+    SrvPid = case get_client(NodeOrTuple) of
+        {ok, Pid} ->
             ok = gen_server:cast(Pid, {{async_call,M,F,A}, self(), Ref}),
-            Pid
+            Pid;
+        {error, {badrpc,_} = RpcError} ->
+            RpcError
     end,
-    case SrvPid of
-        SrvPid when is_pid(SrvPid) ->
+    Reply = case SrvPid of
+        _ when is_pid(SrvPid) ->
             receive
                 %% Wait for the reply from the node's gen_rpc client process
-                {SrvPid,Ref,async_call,Reply} ->
-                    %% Wait for a yield request from the caller
-                    receive
-                        {YieldPid,Ref,yield} ->
-                            YieldPid ! {self(), Ref, async_call, Reply}
-                    after
-                        TTL ->
-                            exit({error, async_call_cleanup_timeout_reached})
-                    end
+                {SrvPid,Ref,async_call,SrvReply} ->
+                    SrvReply
             after
                 TTL ->
                     exit({error, async_call_cleanup_timeout_reached})
             end;
-        TRpcError ->
-            %% Wait for a yield request from the caller
-            receive
-                {YieldPid,Ref,yield} ->
-                    YieldPid ! {self(), Ref, async_call, TRpcError}
-            after
-                TTL ->
-                    exit({error, async_call_cleanup_timeout_reached})
-            end
+        _ ->
+            SrvPid
+    end,
+    %% Wait for a yield request from the caller
+    receive
+        {YieldPid,Ref,yield} ->
+            YieldPid ! {self(), Ref, async_call, Reply}
+    after
+        TTL ->
+            exit({error, async_call_cleanup_timeout_reached})
     end.
-
-parse_multicall_results(Keys, Nodes, undefined) ->
-    parse_multicall_results(Keys, Nodes, infinity);
 
 parse_multicall_results(Keys, Nodes, Timeout) ->
     AsyncResults = [nb_yield(Key, Timeout) || Key <- Keys],
@@ -553,19 +569,19 @@ parse_multicall_results(Keys, Nodes, Timeout) ->
     end, {[], [], Nodes}, AsyncResults),
     {RealResults, RealBadNodes}.
 
-parse_sbcast_results(WorkerPids, Ref) ->
+parse_sbcast_results(Nodes, Ref) ->
     Timeout = gen_rpc_helper:get_sbcast_receive_timeout(),
-    parse_sbcast_results(WorkerPids, Ref, {[], []}, Timeout).
+    parse_sbcast_results(Nodes, Ref, {[], []}, Timeout).
 
-parse_sbcast_results([{_Pid,Node}|WorkerPids], Ref, {Good, Bad}, Timeout) ->
+parse_sbcast_results([Node|Nodes], Ref, {Good, Bad}, Timeout) ->
     receive
         {Ref, Node, error} ->
-            parse_sbcast_results(WorkerPids, Ref, {Good, [Node|Bad]}, Timeout);
+            parse_sbcast_results(Nodes, Ref, {Good, [Node|Bad]}, Timeout);
         {Ref, Node, success} ->
-            parse_sbcast_results(WorkerPids, Ref, {[Node|Good], Bad}, Timeout)
+            parse_sbcast_results(Nodes, Ref, {[Node|Good], Bad}, Timeout)
     after
         Timeout ->
-            parse_sbcast_results(WorkerPids, Ref, {Good, [Node|Bad]}, Timeout)
+            parse_sbcast_results(Nodes, Ref, {Good, [Node|Bad]}, Timeout)
     end;
 
 parse_sbcast_results([], _Ref, Results, _Timeout) ->

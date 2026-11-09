@@ -3,10 +3,10 @@
 ## Overview
 
 - Latest release: ![Tag Version](https://img.shields.io/github/tag/priestjim/gen_rpc.svg)
-- Branch status (`master`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Amaster) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=master&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=master)
+- Branch status (`main`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Amain) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=main&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=main)
 - Branch status (`develop`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Adevelop) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=develop&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=develop)
 - Issues: [![GitHub issues](https://img.shields.io/github/issues/priestjim/gen_rpc.svg)](https://github.com/priestjim/gen_rpc/issues)
-- License: [![GitHub license](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://raw.githubusercontent.com/priestjim/gen_rpc/master/LICENSE)
+- License: [![GitHub license](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://raw.githubusercontent.com/priestjim/gen_rpc/main/LICENSE)
 - [Erlang Factory 2016 Talk](https://www.youtube.com/watch?feature=player_embedded&v=xiPnLACtNeo)
 
 ## Build Dependencies
@@ -29,7 +29,7 @@ Getting started with `gen_rpc` is easy. First, add the appropriate dependency li
 
 ```erlang
 {deps, [
-    {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "master"}}}
+    {gen_rpc, {git, "https://github.com/priestjim/gen_rpc.git", {branch, "main"}}}
 ]}.
 ```
 
@@ -162,6 +162,8 @@ and pass them as the node list in the multi-node function.
 - `cookie_per_node`: Cookie used to authenticate connections with each node, see [Cookie per Node](#cookie-per-node). Defaults to `{internal, #{}}`, which uses the node's Erlang cookie for every node.
 
 - `async_call_inactivity_timeout`: Inactivity period in **milliseconds** after which a pending process holding an `async_call` return value will exit. This is used for process sanitation purposes so please make sure to set it in a sufficiently high number (or `infinity`).
+
+- `tcp_server_options` and `tcp_client_options`: Lists of custom `gen_tcp` socket options for the plain TCP driver, applied to the listening socket and to all outgoing connections respectively (they are global, not per node). They are merged with the defaults in `include/tcp.hrl` and override them by option name, e.g. `{tcp_client_options, [{sndbuf, 262144}, {nodelay, false}]}`. Do not override `binary`, `{packet,4}` or `{active,_}`, since `gen_rpc` depends on them. Defaults to `[]`. `SO_REUSEPORT` is not enabled by default; to let multiple instances share a listening port, set `{tcp_server_options, [{reuseport, true}]}` (OTP 26+).
 
 - `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers, on Linux and macOS only).
 
@@ -335,9 +337,9 @@ In order to achieve the mailbox-per-node feature, `gen_rpc` uses a very specific
 
 - If the specified `client` process does not exist, it will request for a new one through the `dispatcher` process, which in turn will launch it through the appropriate `client` supervisor. Since this |`whereis` > request from dispatcher sequence > start client| can happen concurrently by many different processes, serializing it behind a `gen_server` allows us to avoid race conditions.
 
-- The `dispatcher` process will launch a new `client` process through the client's supervisor.
+- The `dispatcher` process launches the new `client` in a separate process, so that a node that is slow to answer does not hold up the clients of the other nodes. Requests for the same `client` that arrive in the meantime wait for the same result.
 
-- The new client process will connect to the remote node's `gen_rpc server`, submit a request for a new server and wait.
+- That process connects to the remote node's `gen_rpc server`, authenticates, and only then starts the `client` process through the client's supervisor, which hands the connection over to it.
 
 - The `gen_rpc server` server will ask the `acceptor` supervisor to launch a new `acceptor` process and hands it off the new socket connection.
 

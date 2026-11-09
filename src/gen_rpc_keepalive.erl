@@ -29,8 +29,7 @@
                     statval :: integer() | undefined,
                     tsec :: integer() | undefined,
                     tmsg :: term(),
-                    tref :: reference() | undefined,
-                    repeat :: integer() | undefined}).
+                    tref :: reference() | undefined}).
 
 -type(keepalive() :: #keepalive{}).
 
@@ -45,7 +44,7 @@ start(StatFun, TimeoutSec, TimeoutMsg) ->
         {ok, StatVal} ->
             {ok, #keepalive{statfun = StatFun, statval = StatVal,
                             tsec = TimeoutSec, tmsg = TimeoutMsg,
-                            tref = timer(TimeoutSec, TimeoutMsg), repeat = 0}};
+                            tref = timer(TimeoutSec, TimeoutMsg)}};
         {error, Error} ->
             {error, Error}
     end.
@@ -56,7 +55,7 @@ check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal}) ->
     case StatFun() of
         {ok, NewVal} ->
             if NewVal =/= LastVal ->
-                    {ok, resume(KeepAlive#keepalive{statval = NewVal, repeat = 0})};
+                    {ok, resume(KeepAlive#keepalive{statval = NewVal})};
                 true ->
                     {error, timeout}
             end;
@@ -79,4 +78,3 @@ cancel(_) ->
 
 timer(Sec, Msg) ->
     erlang:send_after(timer:seconds(Sec), self(), Msg).
-

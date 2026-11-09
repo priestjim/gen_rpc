@@ -14,8 +14,8 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
-%%% Include this library's name macro
--include("app.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 
 %%% Local state
 -record(state, {socket = undefined :: port() | undefined,
@@ -35,7 +35,7 @@
 -export([start_link/2, set_socket/2, stop/1]).
 
 %% gen_statem callbacks
--export([init/1, handle_event/4, callback_mode/0, terminate/3, code_change/4]).
+-export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
 %% State machine states
 -export([waiting_for_socket/3, waiting_for_auth/3, waiting_for_data/3]).
@@ -66,7 +66,7 @@ set_socket(Pid, Socket) when is_pid(Pid) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Driver, Peer}) ->
-    ok = gen_rpc_helper:set_optimal_process_flags(),
+    ok = gen_rpc_helper:set_optimal_process_flags(true),
     {Control, ControlList} = gen_rpc_helper:get_rpc_module_control(),
     {DriverMod, _DriverPort, DriverClosed, DriverError} = gen_rpc_helper:get_server_driver_options(Driver),
     ?log(info, "event=start driver=~s peer=\"~s\"", [Driver, gen_rpc_helper:peer_to_string(Peer)]),
@@ -83,7 +83,7 @@ callback_mode() ->
 
 waiting_for_socket({call,From}, {socket_ready,Socket}, #state{driver=Driver, driver_mod=DriverMod, peer=Peer} = State) ->
     % Now we own the socket
-    ?log(debug, "event=acquiring_socket_ownership driver=~s socket=\"~s\" peer=\"~p\"",
+    ?log_debug("event=acquiring_socket_ownership driver=~s socket=\"~s\" peer=\"~p\"",
          [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
     ok = DriverMod:set_acceptor_opts(Socket),
     ok = DriverMod:activate_socket(Socket),
@@ -95,7 +95,7 @@ waiting_for_auth(info, {Driver,Socket,Data}, #state{socket=Socket, driver=Driver
         {error, Reason} ->
             {stop, Reason, State};
         ok ->
-            {next_state, waiting_for_data, State}
+            {next_state, waiting_for_data, State, gen_rpc_helper:get_server_inactivity_timeout()}
     end;
 
 waiting_for_auth(timeout, _Timeout, #state{socket=Socket, driver=Driver, peer=Peer} = State) ->
@@ -104,10 +104,10 @@ waiting_for_auth(timeout, _Timeout, #state{socket=Socket, driver=Driver, peer=Pe
     {stop, timed_out_waiting_for_auth, State};
 
 waiting_for_auth(info, {DriverClosed, Socket} = Msg, #state{socket=Socket, driver_closed=DriverClosed} = State) ->
-    handle_event(info, Msg, waiting_for_auth, State);
+    handle_socket_event(Msg, State);
 
 waiting_for_auth(info, {DriverError, Socket, _Reason} = Msg, #state{socket=Socket, driver_error=DriverError} = State) ->
-    handle_event(info, Msg, waiting_for_auth, State).
+    handle_socket_event(Msg, State).
 
 waiting_for_data(info, {Driver,Socket,Data},
                  #state{socket=Socket, driver=Driver, driver_mod=DriverMod, peer=Peer, control=Control, list=List} = State) ->
@@ -115,82 +115,70 @@ waiting_for_data(info, {Driver,Socket,Data},
     %% the data
     try erlang:binary_to_term(Data) of
         {{CallType,M,F,A}, Caller} when CallType =:= call; CallType =:= async_call ->
-            {ModVsnAllowed, RealM} = check_module_version_compat(M),
-            case check_if_module_allowed(RealM, Control, List) of
-                true ->
-                    case ModVsnAllowed of
-                        true ->
-                            WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), CallType, RealM, F, A, Caller]),
-                            ?log(debug, "event=call_received driver=~s socket=\"~s\" peer=\"~s\" caller=\"~p\" worker_pid=\"~p\"",
-                                 [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Caller, WorkerPid]),
-                            ok = DriverMod:activate_socket(Socket),
-                            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
-                        false ->
-                            ?log(debug, "event=incompatible_module_version driver=~s socket=\"~s\" method=~s module=~s",
-                                 [Driver, gen_rpc_helper:socket_to_string(Socket), CallType, RealM]),
-                            ok = DriverMod:activate_socket(Socket),
-                            waiting_for_data(info, {CallType, Caller, {badrpc,incompatible}}, State)
-                    end;
-                false ->
-                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s module=~s",
+            case authorize(M, Control, List) of
+                {ok, RealM} ->
+                    WorkerPid = erlang:spawn(?MODULE, call_worker, [self(), CallType, RealM, F, A, Caller]),
+                    ?log_debug("event=call_received driver=~s socket=\"~s\" peer=\"~s\" caller=\"~p\" worker_pid=\"~p\"",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Caller, WorkerPid]),
+                    continue(DriverMod, Socket);
+                {incompatible, RealM} ->
+                    ?log_debug("event=incompatible_module_version driver=~s socket=\"~s\" method=~s module=~s",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), CallType, RealM]),
+                    ok = DriverMod:activate_socket(Socket),
+                    waiting_for_data(info, {CallType, Caller, {badrpc,incompatible}}, State);
+                {unauthorized, RealM} ->
+                    ?log_debug("event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s module=~s",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, CallType, RealM]),
                     ok = DriverMod:activate_socket(Socket),
                     waiting_for_data(info, {CallType, Caller, {badrpc,unauthorized}}, State)
             end;
         {cast, M, F, A} ->
-            {ModVsnAllowed, RealM} = check_module_version_compat(M),
-            _Result = case check_if_module_allowed(RealM, Control, List) of
-                true ->
-                    case ModVsnAllowed of
-                        true ->
-                            ?log(debug, "event=cast_received driver=~s socket=\"~s\" peer=\"~s\" module=~s function=~s args=\"~p\"",
-                                 [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), RealM, F, A]),
-                            _Pid = erlang:spawn(RealM, F, A);
-                        false ->
-                            ?log(debug, "event=incompatible_module_version driver=~s socket=\"~s\" module=~s",
-                                 [Driver, gen_rpc_helper:socket_to_string(Socket), RealM])
-                    end;
-                false ->
-                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=cast module=~s",
+            _ = case authorize(M, Control, List) of
+                {ok, RealM} ->
+                    ?log_debug("event=cast_received driver=~s socket=\"~s\" peer=\"~s\" module=~s function=~s args=\"~p\"",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), RealM, F, A]),
+                    erlang:spawn(RealM, F, A);
+                {incompatible, RealM} ->
+                    ?log_debug("event=incompatible_module_version driver=~s socket=\"~s\" module=~s",
+                         [Driver, gen_rpc_helper:socket_to_string(Socket), RealM]);
+                {unauthorized, RealM} ->
+                    ?log_debug("event=request_not_allowed driver=~s socket=\"~s\" control=~s method=cast module=~s",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, RealM])
             end,
-            ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
+            continue(DriverMod, Socket);
         {abcast, Name, Msg} ->
-            _Result = case check_if_module_allowed(erlang, Control, List) of
+            _ = case check_if_module_allowed(erlang, Control, List) of
                 true ->
-                    ?log(debug, "event=abcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
+                    ?log_debug("event=abcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
-                    Msg = erlang:send(Name, Msg);
+                    send_to_registered(Name, Msg);
                 false ->
-                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
+                    ?log_debug("event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, abcast])
-                end,
-            ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
+            end,
+            continue(DriverMod, Socket);
         {sbcast, Name, Msg, Caller} ->
             Reply = case check_if_module_allowed(erlang, Control, List) of
                 true ->
-                    ?log(debug, "event=sbcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
+                    ?log_debug("event=sbcast_received driver=~s socket=\"~s\" peer=\"~s\" process=~s message=\"~p\"",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Name, Msg]),
-                    case erlang:whereis(Name) of
-                        undefined -> error;
-                        Pid -> Msg = erlang:send(Pid, Msg), success
+                    case send_to_registered(Name, Msg) of
+                        true -> success;
+                        false -> error
                     end;
                 false ->
-                    ?log(debug, "event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
+                    ?log_debug("event=request_not_allowed driver=~s socket=\"~s\" control=~s method=~s",
                          [Driver, gen_rpc_helper:socket_to_string(Socket), Control, sbcast]),
                      error
             end,
             ok = DriverMod:activate_socket(Socket),
             waiting_for_data(info, {sbcast, Caller, Reply}, State);
         ping ->
-            ?log(debug, "event=ping_received driver=~s socket=\"~s\" peer=\"~s\" action=ignore",
+            ?log_debug("event=ping_received driver=~s socket=\"~s\" peer=\"~s\" action=ignore",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-            ok = DriverMod:activate_socket(Socket),
-            {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
+            continue(DriverMod, Socket);
         OtherData ->
-            ?log(debug, "event=erroneous_data_received driver=~s socket=\"~s\" peer=\"~s\" data=\"~p\"",
+            ?log_debug("event=erroneous_data_received driver=~s socket=\"~s\" peer=\"~s\" data=\"~p\"",
                  [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),
             {stop, {badrpc,erroneous_data}, State}
     catch
@@ -202,11 +190,11 @@ waiting_for_data(info, {Driver,Socket,Data},
 waiting_for_data(info, {CallReply,_Caller,_Reply} = Payload, #state{socket=Socket, driver=Driver, driver_mod=DriverMod} = State)
 when CallReply =:= call orelse CallReply =:= async_call orelse CallReply =:= sbcast ->
     Packet = erlang:term_to_binary(Payload),
-    ?log(debug, "message=call_reply event=call_reply_received driver=~s socket=\"~s\" type=~s",
+    ?log_debug("message=call_reply event=call_reply_received driver=~s socket=\"~s\" type=~s",
          [Driver, gen_rpc_helper:socket_to_string(Socket), CallReply]),
     case DriverMod:send(Socket, Packet) of
         ok ->
-            ?log(debug, "message=call_reply event=call_reply_sent driver=~s socket=\"~s\"", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
+            ?log_debug("message=call_reply event=call_reply_sent driver=~s socket=\"~s\"", [Driver, gen_rpc_helper:socket_to_string(Socket)]),
             {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()};
         {error, Reason} ->
             ?log(error, "message=call_reply event=failed_to_send_call_reply driver=~s socket=\"~s\" reason=\"~p\"",
@@ -221,25 +209,10 @@ waiting_for_data(timeout, _Undefined, #state{socket=Socket, driver=Driver} = Sta
     {stop, normal, State};
 
 waiting_for_data(info, {DriverClosed, Socket} = Msg, #state{socket=Socket, driver_closed=DriverClosed} = State) ->
-    handle_event(info, Msg, waiting_for_data, State);
+    handle_socket_event(Msg, State);
 
 waiting_for_data(info, {DriverError, Socket, _Reason} = Msg, #state{socket=Socket, driver_error=DriverError} = State) ->
-    handle_event(info, Msg, waiting_for_data, State).
-
-handle_event(info, {DriverClosed, Socket}, _StateName, #state{socket=Socket, driver=Driver, driver_closed=DriverClosed, peer=Peer} = State) ->
-    ?log(notice, "message=channel_closed driver=~s socket=\"~s\" peer=\"~s\" action=stopping",
-         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
-    {stop, normal, State};
-
-handle_event(info, {DriverError, Socket, Reason}, _StateName, #state{socket=Socket, driver=Driver, driver_error=DriverError, peer=Peer} = State) ->
-    ?log(error, "message=channel_error driver=~s socket=\"~s\" peer=\"~s\" reason=\"~p\" action=stopping",
-         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]),
-    {stop, normal, State};
-
-handle_event(EventType, Event, StateName, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=unknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
-         [Driver, gen_rpc_helper:socket_to_string(Socket), EventType, Event]),
-    {stop, {StateName, undefined_event, Event}, State}.
+    handle_socket_event(Msg, State).
 
 terminate(_Reason, _StateName, _State) ->
     ok.
@@ -250,9 +223,25 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+%% Handle the socket closing or failing
+handle_socket_event({DriverClosed, Socket}, #state{socket=Socket, driver=Driver, driver_closed=DriverClosed, peer=Peer} = State) ->
+    ?log(notice, "message=channel_closed driver=~s socket=\"~s\" peer=\"~s\" action=stopping",
+         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer)]),
+    {stop, normal, State};
+
+handle_socket_event({DriverError, Socket, Reason}, #state{socket=Socket, driver=Driver, driver_error=DriverError, peer=Peer} = State) ->
+    ?log(error, "message=channel_error driver=~s socket=\"~s\" peer=\"~s\" reason=\"~p\" action=stopping",
+         [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]),
+    {stop, normal, State}.
+
+%% Re-enable the socket and wait for the next message
+continue(DriverMod, Socket) ->
+    ok = DriverMod:activate_socket(Socket),
+    {keep_state_and_data, gen_rpc_helper:get_server_inactivity_timeout()}.
+
 %% Process an RPC call request outside of the state machine
 call_worker(Server, CallType, M, F, A, Caller) ->
-    ?log(debug, "event=call_received caller=\"~p\" module=~s function=~s args=\"~p\"", [Caller, M, F, A]),
+    ?log_debug("event=call_received caller=\"~p\" module=~s function=~s args=\"~p\"", [Caller, M, F, A]),
     % If called MFA return exception, not of type term().
     % This fails term_to_binary coversion, crashes process
     % and manifest as timeout. Wrap inside anonymous function with catch
@@ -276,6 +265,30 @@ call_middleman(M, F, A) ->
           end,
     erlang:exit({call_middleman_result, Res}),
     ok.
+
+%% Send a message to a locally registered process, returns whether the process exists.
+%% A missing process must not crash the acceptor, abcast and sbcast are fire and forget
+send_to_registered(Name, Msg) when is_atom(Name) ->
+    case erlang:whereis(Name) of
+        undefined ->
+            false;
+        Pid ->
+            _ = erlang:send(Pid, Msg),
+            true
+    end;
+
+send_to_registered(_Name, _Msg) ->
+    false.
+
+%% Check if a call to a module (or a {Module, Version} tuple) is allowed. The module
+%% is checked against the module control list before its version is checked
+authorize(M, Control, List) ->
+    {ModVsnAllowed, RealM} = check_module_version_compat(M),
+    case check_if_module_allowed(RealM, Control, List) of
+        false -> {unauthorized, RealM};
+        true when ModVsnAllowed -> {ok, RealM};
+        true -> {incompatible, RealM}
+    end.
 
 %% Check if the function is RPC-enabled
 check_if_module_allowed(_Module, disabled, _List) ->
@@ -303,10 +316,10 @@ check_module_version_compat({M, Version}) ->
         end
     catch
         error:undef ->
-            ?log(debug, "event=module_not_found module=~s", [M]),
+            ?log_debug("event=module_not_found module=~s", [M]),
             {false, M};
         error:badarg ->
-            ?log(debug, "event=invalid_module_definition module=\"~p\"", [M]),
+            ?log_debug("event=invalid_module_definition module=\"~p\"", [M]),
             {false, M}
     end;
 

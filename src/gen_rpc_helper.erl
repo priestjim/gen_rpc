@@ -13,18 +13,22 @@
 
 %%% Include this library's name macro
 -include("app.hrl").
-%%% Include helpful guard macros
+%%% Include helpful types
 -include("types.hrl").
+%%% Include the default TCP options
+-include("tcp.hrl").
 
 %%% Public API
 -export([to_string/1,
         peer_to_string/1,
         socket_to_string/1,
         host_from_node/1,
-        set_optimal_process_flags/0,
+        set_optimal_process_flags/1,
         make_process_name/2,
         is_driver_enabled/1,
         merge_sockopt_lists/2,
+        get_tcp_options/1,
+        get_socket_keepalive_options/0,
         get_server_driver_options/1,
         get_client_config_per_node/1,
         get_client_driver_options/1,
@@ -35,7 +39,6 @@
         get_authentication_timeout/0,
         get_call_receive_timeout/1,
         get_sbcast_receive_timeout/0,
-        get_control_receive_timeout/0,
         get_keepalive_interval/0,
         get_ssl_groups/0,
         get_client_inactivity_timeout/0,
@@ -87,9 +90,9 @@ host_from_node(Node) when is_atom(Node) ->
     Host.
 
 %% Set optimal process flags
--spec set_optimal_process_flags() -> ok.
-set_optimal_process_flags() ->
-    _ = erlang:process_flag(trap_exit, true),
+-spec set_optimal_process_flags(boolean()) -> ok.
+set_optimal_process_flags(TrapExit) when is_boolean(TrapExit) ->
+    _ = erlang:process_flag(trap_exit, TrapExit),
     _ = erlang:process_flag(priority, high),
     _ = erlang:process_flag(message_queue_data, off_heap),
     ok.
@@ -125,6 +128,20 @@ merge_sockopt_lists(List1, List2) ->
     SList2 = lists:usort(fun hybrid_proplist_compare/2, List2),
     lists:umerge(fun hybrid_proplist_compare/2, SList1, SList2).
 
+%% Default TCP options merged with the user-supplied tcp_client_options
+%% or tcp_server_options. The user-supplied options take precedence
+-spec get_tcp_options(client | server) -> list().
+get_tcp_options(Side) when Side =:= client; Side =:= server ->
+    ExtraOpts = get_env(list_to_atom("tcp_" ++ atom_to_list(Side) ++ "_options")),
+    merge_sockopt_lists(ExtraOpts, ?TCP_DEFAULT_OPTS).
+
+%% Raw socket options that configure the keepalive of a connected socket
+%% according to the socket_keepalive_* settings. These are OS specific and
+%% are used by both drivers, nothing is returned for unsupported systems
+-spec get_socket_keepalive_options() -> list().
+get_socket_keepalive_options() ->
+    get_socket_keepalive_options(os:type()).
+
 -spec is_driver_enabled(atom()) -> boolean().
 is_driver_enabled(Driver) when is_atom(Driver) ->
     DriverStr = erlang:atom_to_list(Driver),
@@ -138,11 +155,8 @@ is_driver_enabled(Driver) when is_atom(Driver) ->
 
 -spec get_server_driver_options(atom()) -> tuple().
 get_server_driver_options(Driver) when is_atom(Driver) ->
-    DriverStr = erlang:atom_to_list(Driver),
-    DriverMod = erlang:list_to_atom("gen_rpc_driver_" ++ DriverStr),
-    ClosedMsg = erlang:list_to_atom(DriverStr ++ "_closed"),
-    ErrorMsg = erlang:list_to_atom(DriverStr ++ "_error"),
-    PortSetting = erlang:list_to_atom(DriverStr ++ "_server_port"),
+    {DriverMod, ClosedMsg, ErrorMsg} = get_client_driver_options(Driver),
+    PortSetting = erlang:list_to_atom(erlang:atom_to_list(Driver) ++ "_server_port"),
     {ok, DriverPort} = application:get_env(?APP, PortSetting),
     {DriverMod, DriverPort, ClosedMsg, ErrorMsg}.
 
@@ -187,17 +201,14 @@ get_cookie_per_node(Node) when is_atom(Node) ->
             maps:get(Node, NodeMap, erlang:get_cookie())
     end.
 
-
 -spec get_connect_timeout() -> timeout().
 get_connect_timeout() ->
-    {ok, ConnTO} = application:get_env(?APP, connect_timeout),
-    ConnTO.
+    get_env(connect_timeout).
 
 %% Merges user-defined call receive timeout values with app timeout values
 -spec get_call_receive_timeout(undefined | timeout()) -> timeout().
 get_call_receive_timeout(undefined) ->
-    {ok, RecvTO} = application:get_env(?APP, call_receive_timeout),
-    RecvTO;
+    get_env(call_receive_timeout);
 
 get_call_receive_timeout(Else) ->
     Else.
@@ -215,65 +226,64 @@ get_rpc_module_control() ->
 %% Retrieves the default authentication timeout
 -spec get_authentication_timeout() -> timeout().
 get_authentication_timeout() ->
-    {ok, AuthTO} = application:get_env(?APP, authentication_timeout),
-    AuthTO.
+    get_env(authentication_timeout).
 
 %% Returns the default sbcast receive timeout
 -spec get_sbcast_receive_timeout() -> timeout().
 get_sbcast_receive_timeout() ->
-    {ok, RecvTO} = application:get_env(?APP, sbcast_receive_timeout),
-    RecvTO.
-
-%% Returns the default dispatch receive timeout
--spec get_control_receive_timeout() -> timeout().
-get_control_receive_timeout() ->
-    {ok, RecvTO} = application:get_env(?APP, control_receive_timeout),
-    RecvTO.
+    get_env(sbcast_receive_timeout).
 
 %% Merges user-defined send timeout values with app timeout values
 -spec get_send_timeout(undefined | timeout()) -> timeout().
 get_send_timeout(undefined) ->
-    {ok, SendTO} = application:get_env(?APP, send_timeout),
-    SendTO;
+    get_env(send_timeout);
 get_send_timeout(Else) ->
     Else.
 
-%% Returns the client keepalive interval in seconds, 0 disables the keepalive
 %% @doc Returns the TLS 1.3 key exchange groups used by default, in order of
 %% preference: hybrid post-quantum (ML-KEM) groups followed by elliptic curves.
 %% Groups that the running OTP release does not support are filtered out, since
-%% ML-KEM is not available on older releases.
+%% ML-KEM is not available on older releases. The result cannot change while the
+%% VM is running so it is only computed once.
 -spec get_ssl_groups() -> [atom()].
 get_ssl_groups() ->
-    Preferred = [x25519mlkem768, secp256r1mlkem768, secp384r1mlkem1024,
-                 x25519, secp384r1, secp256r1],
-    Supported = try ssl:groups() catch _:_ -> [x25519, secp384r1, secp256r1] end,
-    [Group || Group <- Preferred, lists:member(Group, Supported)].
+    case persistent_term:get({?MODULE, ssl_groups}, undefined) of
+        undefined ->
+            Preferred = [x25519mlkem768, secp256r1mlkem768, secp384r1mlkem1024,
+                         x25519, secp384r1, secp256r1],
+            Supported = try ssl:groups() catch _:_ -> [x25519, secp384r1, secp256r1] end,
+            Groups = [Group || Group <- Preferred, lists:member(Group, Supported)],
+            ok = persistent_term:put({?MODULE, ssl_groups}, Groups),
+            Groups;
+        Groups ->
+            Groups
+    end.
 
+%% Returns the client keepalive interval in seconds, 0 disables the keepalive
 -spec get_keepalive_interval() -> non_neg_integer().
 get_keepalive_interval() ->
-    {ok, Interval} = application:get_env(?APP, keepalive_interval),
-    Interval.
+    get_env(keepalive_interval).
 
 %% Returns default inactivity timeouts for the client and the server
 -spec get_client_inactivity_timeout() -> timeout().
 get_client_inactivity_timeout() ->
-    {ok, TTL} = application:get_env(?APP, client_inactivity_timeout),
-    TTL.
+    get_env(client_inactivity_timeout).
 
 -spec get_server_inactivity_timeout() -> timeout().
 get_server_inactivity_timeout() ->
-    {ok, TTL} = application:get_env(?APP, server_inactivity_timeout),
-    TTL.
+    get_env(server_inactivity_timeout).
 
 -spec get_async_call_inactivity_timeout() -> timeout().
 get_async_call_inactivity_timeout() ->
-    {ok, TTL} = application:get_env(?APP, async_call_inactivity_timeout),
-    TTL.
+    get_env(async_call_inactivity_timeout).
 
 %%% ===================================================
 %%% Private functions
 %%% ===================================================
+get_env(Key) ->
+    {ok, Value} = application:get_env(?APP, Key),
+    Value.
+
 get_client_config_from_map(Node, NodeConfig) ->
     case maps:find(Node, NodeConfig) of
         error ->
@@ -288,6 +298,21 @@ get_client_config_from_map(Node, NodeConfig) ->
             {ok, Driver} = application:get_env(?APP, default_client_driver),
             {Driver, Port}
     end.
+
+get_socket_keepalive_options({unix, darwin}) ->
+    [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_SO_KEEPALIVE, <<1:32/native>>},
+     {raw, ?DARWIN_SOL_TCP, ?DARWIN_TCP_KEEPIDLE, <<(get_env(socket_keepalive_idle)):32/native>>},
+     {raw, ?DARWIN_SOL_TCP, ?DARWIN_TCP_KEEPINTVL, <<(get_env(socket_keepalive_interval)):32/native>>},
+     {raw, ?DARWIN_SOL_TCP, ?DARWIN_TCP_KEEPCNT, <<(get_env(socket_keepalive_count)):32/native>>}];
+
+get_socket_keepalive_options({unix, linux}) ->
+    [{raw, ?LINUX_SOL_SOCKET, ?LINUX_SO_KEEPALIVE, <<1:32/native>>},
+     {raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPIDLE, <<(get_env(socket_keepalive_idle)):32/native>>},
+     {raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPINTVL, <<(get_env(socket_keepalive_interval)):32/native>>},
+     {raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPCNT, <<(get_env(socket_keepalive_count)):32/native>>}];
+
+get_socket_keepalive_options(_Unsupported) ->
+    [].
 
 hybrid_proplist_compare({K1,_V1}, {K2,_V2}) ->
     K1 =< K2;

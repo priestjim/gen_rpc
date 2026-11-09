@@ -248,3 +248,13 @@ a new ticket if the solution could still be improved.
 
 New features and backward incompatible changes will be merged
 when all tests pass and all other requirements are fulfilled.
+
+## Releasing
+
+Releases are cut by the maintainer from `main` with the _Release_ GitHub Action
+(_Actions_ → _Release_ → _Run workflow_, entering the version, e.g. `3.1.0`).
+Every PR that changes behavior **MUST** add an entry under `## Unreleased` in
+`CHANGELOG.md`. The workflow runs the CI suite and then promotes that section to the
+new version, sets the version in `src/gen_rpc.app.src` and `mix.exs`, commits and tags
+the release, creates the GitHub release with the changelog entries as its description
+and publishes the package to hex.pm. It needs the `HEX_API_KEY` repository secret.

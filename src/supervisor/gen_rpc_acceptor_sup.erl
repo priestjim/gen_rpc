@@ -12,6 +12,8 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 
 %%% Supervisor functions
 -export([start_link/0, start_child/2, stop_child/1]).
@@ -28,21 +30,19 @@ start_link() ->
 
 -spec start_child(atom(), {inet:ip4_address(), inet:port_number()}) -> supervisor:startchild_ret().
 start_child(Driver, Peer) when is_tuple(Peer) ->
-    ?log(debug, "event=starting_new_acceptor peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
+    ?log_debug("event=starting_new_acceptor peer=\"~s\"", [gen_rpc_helper:peer_to_string(Peer)]),
     case supervisor:start_child(?MODULE, [Driver,Peer]) of
         {error, {already_started, CPid}} ->
             %% If we've already started the child, terminate it and start anew
             ok = stop_child(CPid),
-            supervisor:start_child(?MODULE, [Peer]);
-        {error, OtherError} ->
-            {error, OtherError};
-        {ok, Pid} ->
-            {ok, Pid}
+            supervisor:start_child(?MODULE, [Driver,Peer]);
+        Other ->
+            Other
     end.
 
 -spec stop_child(pid()) ->  ok.
 stop_child(Pid) when is_pid(Pid) ->
-    ?log(debug, "event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
+    ?log_debug("event=stopping_acceptor acceptor_pid=\"~p\"", [Pid]),
     _ = supervisor:terminate_child(?MODULE, Pid),
     ok.
 
