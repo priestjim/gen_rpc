@@ -93,23 +93,23 @@ following commands:
 
 ### Branching
 
-You **SHOULD** base your branch on _develop_.
+You **SHOULD** base your branch on _main_.
 
 The first step is therefore to checkout the branch in question:
 
-    $ git checkout develop
+    $ git checkout main
 
 The next step is to update the branch to the current version from
 _upstream_:
 
     $ git fetch upstream
-    $ git rebase upstream/develop
+    $ git rebase upstream/main
 
 This last command may fail and ask you to stash your changes. When
 that happens, run the following sequence of commands:
 
     $ git stash
-    $ git rebase upstream/develop
+    $ git rebase upstream/main
     $ git stash pop
 
 The final step is to create a new branch you can work in. The name

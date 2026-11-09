@@ -41,7 +41,7 @@ defmodule GenRPC.MixProject do
 
   defp package do
     [
-      files: ~w(include src LICENSE README.md CHANGELOG.md mix.exs rebar.config rebar.config.script),
+      files: ~w(include src LICENSE README.md CHANGELOG.md mix.exs rebar.config),
       maintainers: ["Panagiotis PJ Papadomitsos"],
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url, "Changelog" => @source_url <> "/blob/main/CHANGELOG.md"}

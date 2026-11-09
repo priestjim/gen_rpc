@@ -3,8 +3,7 @@
 ## Overview
 
 - Latest release: ![Tag Version](https://img.shields.io/github/tag/priestjim/gen_rpc.svg)
-- Branch status (`main`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Amain) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=main&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=main)
-- Branch status (`develop`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Adevelop) [![Coverage Status](https://coveralls.io/repos/priestjim/gen_rpc/badge.svg?branch=develop&service=github)](https://coveralls.io/github/priestjim/gen_rpc?branch=develop)
+- Branch status (`main`): [![CI](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/priestjim/gen_rpc/actions/workflows/ci.yml?query=branch%3Amain)
 - Issues: [![GitHub issues](https://img.shields.io/github/issues/priestjim/gen_rpc.svg)](https://github.com/priestjim/gen_rpc/issues)
 - License: [![GitHub license](https://img.shields.io/badge/license-Apache%202-blue.svg)](https://raw.githubusercontent.com/priestjim/gen_rpc/main/LICENSE)
 - [Erlang Factory 2016 Talk](https://www.youtube.com/watch?feature=player_embedded&v=xiPnLACtNeo)
