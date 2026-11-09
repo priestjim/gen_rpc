@@ -4,9 +4,12 @@
 %%% Copyright 2015 Panagiotis Papadomitsos. All Rights Reserved.
 %%%
 
+%%% ECDSA only signature algorithms
+-define(SSL_SIGNATURE_ALGS, [ecdsa_secp384r1_sha384,ecdsa_secp256r1_sha256,ecdsa_secp521r1_sha512]).
+
 %%% Default SSL options common to client and server
 -define(SSL_DEFAULT_COMMON_OPTS, [binary,
-        {packet,0},
+        {packet,4}, % Length-prefixed frames, TLS is a byte stream that splits and coalesces messages
         {header,0},
         {exit_on_close,true},
         {nodelay,true}, % Send our requests immediately
@@ -27,12 +30,11 @@
         %% filtered at runtime against what the running OTP release supports
         {supported_groups,gen_rpc_helper:get_ssl_groups()},
         %% ECDSA only, both for the handshake and for the certificate chain
-        {signature_algs,[ecdsa_secp384r1_sha384,ecdsa_secp256r1_sha256,ecdsa_secp521r1_sha512]},
-        {signature_algs_cert,[ecdsa_secp384r1_sha384,ecdsa_secp256r1_sha256,ecdsa_secp521r1_sha512]},
+        {signature_algs,?SSL_SIGNATURE_ALGS},
+        {signature_algs_cert,?SSL_SIGNATURE_ALGS},
         {versions,['tlsv1.3']},
         {verify,verify_peer},
-        {hibernate_after,600000},
-        {active,false}]).
+        {hibernate_after,600000}]).
 
 -define(SSL_DEFAULT_SERVER_OPTS, [{fail_if_no_peer_cert,true},
         {log_alert,false},

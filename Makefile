@@ -10,7 +10,7 @@
 #                   and explicitly delete other build artifacts
 # test: 		    rebar3 as test do ct -v, cover
 # integration:      Runs the Docker Compose based integration tests (3 nodes + 1 master)
-# dialyzer:         rebar3 as test do dialyzer
+# dialyzer:         rebar3 as dev do dialyzer
 # xref:             rebar3 as dev do xref
 # dist:             rebar3 as test do compile, ct -v -c, xref, dialyzer, cover
 # spec:             Runs typer to generate source code specs

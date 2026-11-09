@@ -24,3 +24,9 @@ _build
 rebar
 *.crashdump
 .exrc
+
+/deps
+
+AGENTS.md
+/doc
+gen_rpc-*.tar

@@ -7,8 +7,6 @@
 -module(gen_rpc).
 -author("Panagiotis Papadomitsos <pj@ezgr.net>").
 
-%%% Include helpful guard macros
--include("guards.hrl").
 %%% Include helpful types
 -include("types.hrl").
 
@@ -41,28 +39,28 @@
 %%% ===================================================
 %% All functions are GUARD-ed in the sender module, no
 %% need for the overhead here
--spec async_call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp, term()}.
 async_call(Node, M, F) ->
     gen_rpc_client:async_call(Node, M, F).
 
--spec async_call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec async_call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp, term()}.
 async_call(Node, M, F, A) ->
     gen_rpc_client:async_call(Node, M, F, A).
 
--spec call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function()) -> term() | {badrpc, term()} | {badtcp, term()}.
 call(Node, M, F) ->
     gen_rpc_client:call(Node, M, F).
 
--spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list()) -> term() | {badrpc, term()} | {badtcp, term()}.
 call(Node, M, F, A) ->
     gen_rpc_client:call(Node, M, F, A).
 
 -spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined) ->
-    term() | {badrpc, term()} | {badtcp | term()}.
+    term() | {badrpc, term()} | {badtcp, term()}.
 call(Node, M, F, A, RecvTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO).
 
--spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp | term()}.
+-spec call(node_or_tuple(), atom() | tuple(), atom() | function(), list(), timeout() | undefined, timeout() | undefined) -> term() | {badrpc, term()} | {badtcp, term()}.
 call(Node, M, F, A, RecvTO, SendTO) ->
     gen_rpc_client:call(Node, M, F, A, RecvTO, SendTO).
 
@@ -94,11 +92,11 @@ eval_everywhere(Nodes, M, F, A, SendTO) ->
 yield(Key) ->
     gen_rpc_client:yield(Key).
 
--spec nb_yield(tuple()) -> {value, term()} | {badrpc, term()}.
+-spec nb_yield(tuple()) -> {value, term()} | timeout.
 nb_yield(Key) ->
     gen_rpc_client:nb_yield(Key).
 
--spec nb_yield(tuple(), timeout()) -> {value, term()} | {badrpc, term()}.
+-spec nb_yield(tuple(), timeout()) -> {value, term()} | timeout.
 nb_yield(Key, Timeout) ->
     gen_rpc_client:nb_yield(Key, Timeout).
 

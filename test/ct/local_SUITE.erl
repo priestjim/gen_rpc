@@ -22,10 +22,8 @@ all() ->
     gen_rpc_test_helper:get_test_functions(?MODULE).
 
 init_per_suite(Config) ->
-    %% Starting Distributed Erlang on local node
-    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
-    %% Setup the app locally
-    ok = gen_rpc_test_helper:start_master(tcp),
+    %% Starting Distributed Erlang and the app on local node
+    ok = gen_rpc_test_helper:start_distributed_master(tcp),
     Config.
 
 end_per_suite(_Config) ->
@@ -117,6 +115,84 @@ supervisor_black_box(_Config) ->
     true = erlang:is_process_alive(erlang:whereis(gen_rpc_dispatcher)),
     ok.
 
+tcp_custom_options(_Config) ->
+    Defaults = gen_rpc_helper:get_tcp_options(client),
+    true = lists:member({nodelay,true}, Defaults),
+    true = lists:member({packet,4}, Defaults),
+    try
+        ok = application:set_env(?APP, tcp_client_options, [{nodelay,false}, {sndbuf,32768}]),
+        ok = application:set_env(?APP, tcp_server_options, [{backlog,64}]),
+        Client = gen_rpc_helper:get_tcp_options(client),
+        true = lists:member({nodelay,false}, Client),
+        false = lists:member({nodelay,true}, Client),
+        true = lists:member({sndbuf,32768}, Client),
+        false = lists:member({backlog,64}, Client),
+        Server = gen_rpc_helper:get_tcp_options(server),
+        true = lists:member({backlog,64}, Server),
+        true = lists:member({nodelay,true}, Server),
+        %% A listener with custom options accepts connections
+        {ok, LSock} = gen_tcp:listen(0, Server),
+        ok = gen_tcp:close(LSock)
+    after
+        ok = application:set_env(?APP, tcp_client_options, []),
+        ok = application:set_env(?APP, tcp_server_options, [])
+    end,
+    ok.
+
+%% A client that is slow to start must not hold up the clients of the other nodes
+slow_client_start(_Config) ->
+    SlowNode = 'slow_node@127.0.0.1',
+    %% The server accepts the connection but never answers the authentication
+    {ok, LSock} = gen_tcp:listen(0, [binary, {active,false}]),
+    {ok, Port} = inet:port(LSock),
+    try
+        ok = application:set_env(?APP, client_config_per_node, {internal, #{SlowNode => {tcp, Port}}}),
+        ok = application:set_env(?APP, call_receive_timeout, 1500),
+        Self = self(),
+        Callers = [erlang:spawn_link(fun() -> Self ! {self(), gen_rpc:call(SlowNode, os, timestamp)} end) || _ <- [1,2]],
+        %% The dispatcher is starting the client of the slow node
+        ok = gen_rpc_test_helper:wait_until(fun() -> map_size(sys:get_state(gen_rpc_dispatcher)) =:= 1 end, 1000),
+        Start = erlang:monotonic_time(millisecond),
+        {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
+        true = erlang:monotonic_time(millisecond) - Start < 1000,
+        %% Everyone waiting for the slow node gets the result of the same connection attempt
+        ok = lists:foreach(fun(Caller) ->
+            receive
+                {Caller, {badtcp, timeout}} -> ok
+            after
+                5000 -> erlang:error(timeout)
+            end
+        end, Callers),
+        0 = map_size(sys:get_state(gen_rpc_dispatcher))
+    after
+        ok = application:set_env(?APP, client_config_per_node, {internal, #{}}),
+        ok = application:set_env(?APP, call_receive_timeout, 15000),
+        ok = gen_tcp:close(LSock)
+    end,
+    ok.
+
+%% The send timeout of the socket follows the timeout of each request
+send_timeout_per_request(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp, [], undefined, 1234),
+    Socket = client_socket(),
+    {ok, [{send_timeout, 1234}]} = inet:getopts(Socket, [send_timeout]),
+    {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?MASTER, os, timestamp),
+    DefaultSendTO = gen_rpc_helper:get_send_timeout(undefined),
+    {ok, [{send_timeout, DefaultSendTO}]} = inet:getopts(client_socket(), [send_timeout]),
+    ok.
+
+%% Garbage must not be mistaken for a valid authentication request
+authenticate_client_invalid_data(_Config) ->
+    {ok, Socket} = gen_tcp:listen(0, []),
+    Peer = {{127,0,0,1}, 1234},
+    try
+        {error, {badtcp,corrupt_data}} = gen_rpc_driver:authenticate_client(gen_rpc_driver_tcp, Socket, Peer, <<"not a term">>),
+        {error, {badrpc,erroneous_data}} = gen_rpc_driver:authenticate_client(gen_rpc_driver_tcp, Socket, Peer, erlang:term_to_binary(some_atom))
+    after
+        ok = gen_tcp:close(Socket)
+    end,
+    ok.
+
 %% Test main functions
 call(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp).
@@ -172,13 +248,10 @@ interleaved_call(_Config) ->
 authentication_timeout(_Config) ->
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     {ok, _Sock} = gen_tcp:connect("127.0.0.1", ?MASTER_PORT, ?TCP_DEFAULT_OPTS),
-    %% Give the server some time to launch the acceptor
-    ok = timer:sleep(50),
-    %% The acceptor has been launched
-    [_Master] = supervisor:which_children(gen_rpc_acceptor_sup),
-    ok = timer:sleep(1000),
-    %% The acceptor should have shut down
-    [] = supervisor:which_children(gen_rpc_acceptor_sup),
+    % The server launches the acceptor
+    ok = gen_rpc_test_helper:wait_until(fun() -> length(supervisor:which_children(gen_rpc_acceptor_sup)) =:= 1 end, 1000),
+    % The acceptor should shut down when the authentication timeout is reached
+    ok = gen_rpc_test_helper:wait_until(fun() -> supervisor:which_children(gen_rpc_acceptor_sup) =:= [] end, 2000),
     ok.
 
 cast(_Config) ->
@@ -289,21 +362,20 @@ async_call_inexistent_node(_Config) ->
 
 client_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
-    ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be there
-    undefined = whereis(?MASTER).
+    % The client named process should go away once the inactivity timeout is reached
+    ok = gen_rpc_test_helper:wait_until(fun() -> gen_rpc_test_helper:get_client_pid(?MASTER) =:= undefined end, 2000).
 
 server_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
-    ok = timer:sleep(600),
-    %% Lookup the client named process, shouldn't be there
-    [] = supervisor:which_children(gen_rpc_acceptor_sup).
+    % The acceptor should go away once the inactivity timeout is reached
+    ok = gen_rpc_test_helper:wait_until(fun() -> supervisor:which_children(gen_rpc_acceptor_sup) =:= [] end, 2000).
 
 random_tcp_close(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
     [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
     true = erlang:exit(AccPid, normal),
-    ok = timer:sleep(500), % Give some time to the supervisor to kill the children
+    % Give some time to the supervisor to kill the children
+    ok = gen_rpc_test_helper:wait_until(fun() -> gen_rpc:nodes() =:= [] andalso supervisor:which_children(gen_rpc_acceptor_sup) =:= [] end, 2000),
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     [] = supervisor:which_children(gen_rpc_client_sup).
@@ -329,6 +401,11 @@ client_config_stub(_Config) ->
 %%% ===================================================
 %%% Auxiliary functions for test cases
 %%% ===================================================
+%% The socket of the client of the master node, it is the first field of the state record
+client_socket() ->
+    State = sys:get_state(gen_rpc_test_helper:get_client_pid(?MASTER)),
+    element(2, State).
+
 %% Loop in order to receive all messages from all workers
 interleaved_call_loop(Pid1, Pid2, Pid3, Num) when Num < 3 ->
     receive

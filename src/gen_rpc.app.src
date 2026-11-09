@@ -17,7 +17,7 @@
         "README.md",
         "CHANGELOG.md",
         "include",
-        "package.exs",
+        "mix.exs",
         "rebar.config",
         "src"
     ]},
@@ -29,6 +29,12 @@
         {tcp_client_port, 5369},
         %% SSL server port. Set to false to disable
         {ssl_server_port, false},
+        %% Custom TCP socket options for the listening socket. They are merged
+        %% with (and override) the default TCP options of include/tcp.hrl
+        {tcp_server_options, []},
+        %% Custom TCP socket options for all outgoing connections. They are
+        %% merged with (and override) the default TCP options
+        {tcp_client_options, []},
         %% SSL server options
         {ssl_server_options, []},
         %% Default SSL port for outgoing connections

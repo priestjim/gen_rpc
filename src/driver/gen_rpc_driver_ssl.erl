@@ -14,14 +14,14 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 %%% Include this library's name macro
 -include("app.hrl").
 %%% Include SSL macros
 -include("ssl.hrl").
 %%% Include TCP macros
 -include("tcp.hrl").
-%%% Include helpful guard macros
--include("guards.hrl").
 
 %%% Public API
 -export([connect/2,
@@ -30,8 +30,11 @@
         get_peer/1,
         send/2,
         activate_socket/1,
+        recv/2,
+        close/1,
         authenticate_to_server/2,
         authenticate_client/3,
+        verify_peer/2,
         copy_sock_opts/2,
         set_controlling_process/2,
         set_send_timeout/2,
@@ -49,7 +52,7 @@ connect(Node, Port) when is_atom(Node) ->
     SslOpts = merge_ssl_options(client, Node),
     case ssl:connect(Host, Port, SslOpts, ConnTO) of
         {ok, Socket} ->
-            ?log(debug, "event=connect_to_remote_server peer=\"~s\" socket=\"~s\" result=success",
+            ?log_debug("event=connect_to_remote_server peer=\"~s\" socket=\"~s\" result=success",
                  [Node, gen_rpc_helper:socket_to_string(Socket)]),
             {ok, Socket};
         {error, Reason} ->
@@ -65,11 +68,18 @@ listen(Port) when is_integer(Port) ->
 
 -spec accept(ssl:sslsocket()) -> {ok, ssl:sslsocket()} | {error, term()}.
 accept(Socket) when is_tuple(Socket) ->
-    {ok, TSocket} = ssl:transport_accept(Socket, infinity),
-    case ssl:handshake(TSocket) of
-        {ok, SslSocket} ->
-            {ok, SslSocket};
-        Error -> Error
+    case ssl:transport_accept(Socket, infinity) of
+        {ok, TSocket} ->
+            %% A peer that fails or stalls the handshake must not take down the listener
+            case ssl:handshake(TSocket, gen_rpc_helper:get_authentication_timeout()) of
+                {ok, SslSocket} ->
+                    {ok, SslSocket};
+                {error, Reason} ->
+                    ?log(error, "event=tls_handshake_failed reason=\"~p\"", [Reason]),
+                    accept(Socket)
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec send(ssl:sslsocket(), binary()) -> ok | {error, term()}.
@@ -82,7 +92,7 @@ send(Socket, Data) when is_tuple(Socket), is_binary(Data) ->
             ?log(error, "event=send_data_failed socket=\"~s\" reason=\"~p\"", [gen_rpc_helper:socket_to_string(Socket), Reason]),
             {error, {badtcp,Reason}};
         ok ->
-            ?log(debug, "event=send_data_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
+            ?log_debug("event=send_data_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
             ok
     end.
 
@@ -91,99 +101,36 @@ activate_socket(Socket) when is_tuple(Socket) ->
     ok = ssl:setopts(Socket, [{active,once}]),
     ok.
 
+-spec recv(ssl:sslsocket(), timeout()) -> {ok, binary()} | {error, term()}.
+recv(Socket, Timeout) when is_tuple(Socket) ->
+    ssl:recv(Socket, 0, Timeout).
+
+-spec close(ssl:sslsocket()) -> ok.
+close(Socket) when is_tuple(Socket) ->
+    ssl:close(Socket).
+
 %% Authenticate to a server
 -spec authenticate_to_server(atom(), ssl:sslsocket()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_to_server(Node, Socket) ->
-    Cookie = gen_rpc_helper:get_cookie_per_node(Node),
-    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, node(), Cookie}),
-    SendTO = gen_rpc_helper:get_send_timeout(undefined),
-    RecvTO = gen_rpc_helper:get_call_receive_timeout(undefined),
-    ok = set_send_timeout(Socket, SendTO),
-    case ssl:send(Socket, Packet) of
-        {error, Reason} ->
-            ?log(error, "event=authentication_connection_failed socket=\"~s\" reason=\"~p\"",
-                 [gen_rpc_helper:socket_to_string(Socket), Reason]),
-            ok = ssl:close(Socket),
-            {error, {badtcp,Reason}};
-        ok ->
-            ?log(debug, "event=authentication_connection_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
-            case ssl:recv(Socket, 0, RecvTO) of
-                {ok, RecvPacket} ->
-                    case erlang:binary_to_term(RecvPacket) of
-                        gen_rpc_connection_authenticated ->
-                            ?log(debug, "event=connection_authenticated socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
-                            ok;
-                        {gen_rpc_connection_rejected, Reason} ->
-                            ?log(error, "event=authentication_rejected socket=\"~s\" reason=\"~s\"", [gen_rpc_helper:socket_to_string(Socket), Reason]),
-                            ok = ssl:close(Socket),
-                            {error, {badrpc,Reason}};
-                        _Else ->
-                            ?log(error, "event=authentication_transmission_error socket=\"~s\" reason=\"invalid_payload\"",
-                                 [gen_rpc_helper:socket_to_string(Socket)]),
-                            ok = ssl:close(Socket),
-                            {error, {badrpc,invalid_message}}
-                    end;
-                {error, Reason} ->
-                    ?log(error, "event=authentication_reception_failed socket=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), Reason]),
-                    ok = ssl:close(Socket),
-                    {error, {badtcp,Reason}}
-            end
-    end.
+    gen_rpc_driver:authenticate_to_server(?MODULE, Node, Socket).
 
 %% Authenticate a connected client
 -spec authenticate_client(ssl:sslsocket(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_client(Socket, Peer, Data) ->
-    try erlang:binary_to_term(Data) of
-        {gen_rpc_authenticate_connection, Node, Cookie} when is_atom(Node), is_atom(Cookie) ->
-            ValidCookie = gen_rpc_helper:get_cookie_per_node(Node),
-            if
-                ValidCookie == Cookie ->
-                    PeerCert = extract_peer_certificate(Socket),
-                    NodeStr = gen_rpc_helper:to_string(Node),
-                    {SocketResponse, AuthResult} = case ssl_verify_hostname:verify_cert_hostname(PeerCert, NodeStr) of
-                        {fail, AuthReason} ->
-                            ?log(error, "event=node_certificate_mismatch socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, AuthReason]),
-                            {{gen_rpc_connection_rejected,node_certificate_mismatch}, {error,{badrpc,node_certificate_mismatch}}};
-                        {valid, _Hostname} ->
-                            ?log(debug, "event=certificate_validated socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
-                            {gen_rpc_connection_authenticated, ok}
-                    end,
-                    Packet = erlang:term_to_binary(SocketResponse),
-                    case send(Socket, Packet) of
-                        {error, Reason} ->
-                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]),
-                            {error, {badtcp,Reason}};
-                        ok ->
-                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
-                            ok = activate_socket(Socket),
-                            AuthResult
-                    end;
-                true ->
-                    ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
-                    Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
-                    ok = case send(Socket, Packet) of
-                        {error, Reason} ->
-                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]);
-                        ok ->
-                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node])
-                    end,
-                    {error, {badrpc,invalid_cookie}}
-            end;
-        OtherData ->
-            ?log(debug, "event=erroneous_data_received socket=\"~s\" peer=\"~s\" data=\"~p\"",
-                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),
-            {error, {badrpc,erroneous_data}}
-    catch
-        error:badarg ->
-            {error, {badtcp,corrupt_data}}
+    gen_rpc_driver:authenticate_client(?MODULE, Socket, Peer, Data).
+
+%% The certificate of the client must be valid for the node it claims to be
+-spec verify_peer(ssl:sslsocket(), atom()) -> ok | {error, node_certificate_mismatch}.
+verify_peer(Socket, Node) ->
+    PeerCert = extract_peer_certificate(Socket),
+    case ssl_verify_hostname:verify_cert_hostname(PeerCert, gen_rpc_helper:to_string(Node)) of
+        {fail, Reason} ->
+            ?log(error, "event=node_certificate_mismatch socket=\"~s\" node=\"~s\" reason=\"~p\"",
+                 [gen_rpc_helper:socket_to_string(Socket), Node, Reason]),
+            {error, node_certificate_mismatch};
+        {valid, _Hostname} ->
+            ?log_debug("event=certificate_validated socket=\"~s\" node=\"~s\"", [gen_rpc_helper:socket_to_string(Socket), Node]),
+            ok
     end.
 
 -spec copy_sock_opts(port(), port()) -> ok | {error, any()}.
@@ -206,7 +153,7 @@ set_send_timeout(Socket, SendTO) when is_tuple(Socket) ->
 
 -spec set_acceptor_opts(ssl:sslsocket()) -> ok.
 set_acceptor_opts(Socket) when is_tuple(Socket) ->
-    ok = set_socket_keepalive(os:type(), Socket),
+    ok = ssl:setopts(Socket, gen_rpc_helper:get_socket_keepalive_options()),
     ok = ssl:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}]),
     ok.
 
@@ -232,26 +179,3 @@ merge_ssl_options(server, _Node) ->
 extract_peer_certificate(Socket) ->
     {ok, Cert} = ssl:peercert(Socket),
     public_key:pkix_decode_cert(Cert, otp).
-
-set_socket_keepalive({unix, darwin}, Socket) ->
-    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
-    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
-    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
-    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_SO_KEEPALIVE, <<1:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
-    ok;
-
-set_socket_keepalive({unix, linux}, Socket) ->
-    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
-    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
-    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
-    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_SO_KEEPALIVE, <<1:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
-    ok = ssl:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
-    ok;
-
-set_socket_keepalive(_Unsupported, _Socket) ->
-    ok.

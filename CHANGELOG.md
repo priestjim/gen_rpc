@@ -2,18 +2,25 @@
 
 Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
-## 3.0.0
+## Unreleased
 
 - Deprecate support for Erlang < 25.0 and support up to Erlang/OTP 29
 - Support monitoring nodes with `gen_rpc:monitor_node/2`
 - Support EC SSL certificates, the RSA test certificates (`priv/ssl`) were removed
 - Support cookie per node configuration
 - Support external cookie validation mechanism
+- Support custom TCP socket options for the whole server and client with the `tcp_server_options` and `tcp_client_options` settings, merged with the defaults
 - Support keepalive that actively keeps a client connection alive, configured by `keepalive_interval`
 - SSL now enforces TLS 1.3 only, with AEAD cipher suites, an EC-only key exchange and ECDSA-only signature algorithms (RSA certificates are rejected). The key exchange prefers hybrid post-quantum (ML-KEM) groups where available. TLS 1.2 and older and the legacy cipher suites are not supported anymore
 - Continuous integration moved from Travis CI to GitHub Actions and the Docker integration tests use Docker Compose (`make integration`)
 - The `authenticate_server/1` driver callback has been replaced by `authenticate_to_server/2` and drivers
-  need to implement `getstat/2`
+  need to implement `getstat/2`, `recv/2`, `close/1` and `verify_peer/2`. The authentication handshake itself is shared by the
+  drivers, see `gen_rpc_driver:authenticate_to_server/3` and `gen_rpc_driver:authenticate_client/4`
+- Clients connect and authenticate before their process is started, so a node that is slow to answer does not block the clients
+  of other nodes. Concurrent requests for the same client share one connection attempt
+- Casts, `abcast`, `sbcast` and `eval_everywhere` to a running client no longer spawn a process
+- The send timeout of a client socket is only set when it changes
+- Debug logging no longer builds its arguments when debug logging is disabled
 - Tests use the `peer` module instead of the deprecated `slave` module
 
 ## 2.1.0

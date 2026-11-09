@@ -14,10 +14,7 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
-%%% Include this library's name macro
--include("app.hrl").
 
-%%% Local state
 %%% Local state
 -record(state, {socket :: port(),
         driver :: atom(),
@@ -27,7 +24,7 @@
 -export([start_link/1, stop/1]).
 
 %% gen_statem callbacks
--export([init/1, handle_event/4, callback_mode/0, terminate/3, code_change/4]).
+-export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
 %% State machine states
 -export([waiting_for_connection/3]).
@@ -50,8 +47,7 @@ stop(Driver) when is_atom(Driver) ->
 %%% Behaviour callbacks
 %%% ===================================================
 init({Driver}) ->
-    ok = gen_rpc_helper:set_optimal_process_flags(),
-    _ = erlang:process_flag(trap_exit, false),
+    ok = gen_rpc_helper:set_optimal_process_flags(false),
     {DriverMod, DriverPort, _ClosedMsg, _ErrorMsg} = gen_rpc_helper:get_server_driver_options(Driver),
     case DriverMod:listen(DriverPort) of
         {ok, Socket} ->
@@ -86,18 +82,8 @@ waiting_for_connection(internal, accept, #state{socket=ListSock, driver=Driver, 
             {stop, {socket_error, Reason}, State}
     end.
 
-handle_event(EventType, Event, StateName, #state{socket=Socket, driver=Driver} = State) ->
-    ?log(error, "event=unknown_event driver=~s socket=\"~s\" event_type=\"~p\" payload=\"~p\" action=stopping",
-         [Driver, gen_rpc_helper:socket_to_string(Socket), EventType, Event]),
-    {stop, {StateName, undefined_event, Event}, State}.
-
 terminate(_Reason, _StateName, _State) ->
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
-
-%%% ===================================================
-%%% Private functions
-%%% ===================================================
-

@@ -11,10 +11,8 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
-%%% Include this library's name macro
--include("app.hrl").
-%%% Include helpful types
--include("types.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 
 %%% Local state
 -record(state, {pid_to_node :: map(), % Used to map a crashed PID to a specific node
@@ -76,8 +74,8 @@ handle_call({register_node,Node,Pid}, _Caller, #state{pid_to_node=PTN,node_conns
         0 ->
             %% The connection to this node is new
             %% Notify the subscribers
-            ?log(debug, "event=new_node_connection_detected node=\"~s\"", [Node]),
-            ok = gen_server:cast(self(), {notify_node_up,Node}),
+            ?log_debug("event=new_node_connection_detected node=\"~s\"", [Node]),
+            ok = gen_server:cast(self(), {notify,nodeup,Node}),
             maps:put(Node, 1, NodeConns);
         NodeConn when NodeConn > 0 ->
             maps:put(Node, NodeConn + 1, NodeConns)
@@ -133,15 +131,10 @@ handle_call(Msg, _Caller, State) ->
     ?log(error, "event=unknown_call_received message=\"~p\" action=stopping", [Msg]),
     {stop, {unknown_call, Msg}, State}.
 
-handle_cast({notify_node_down,Node}, #state{node_to_sub=NTS} = State) ->
+%% Notify the subscribers of a node that it went up or down
+handle_cast({notify,Event,Node}, #state{node_to_sub=NTS} = State) when Event =:= nodeup; Event =:= nodedown ->
     ok = lists:foreach(fun(Pid) ->
-        _Msg = erlang:send(Pid, {nodedown,Node})
-    end, sets:to_list(maps:get(Node, NTS, sets:new()))),
-    {noreply, State};
-
-handle_cast({notify_node_up,Node}, #state{node_to_sub=NTS} = State) ->
-    ok = lists:foreach(fun(Pid) ->
-        _Msg = erlang:send(Pid, {nodeup,Node})
+        _Msg = erlang:send(Pid, {Event,Node})
     end, sets:to_list(maps:get(Node, NTS, sets:new()))),
     {noreply, State};
 
@@ -162,8 +155,8 @@ handle_info({'DOWN', _MRef, process, Pid, _Info}, #state{pid_to_node=PTN, node_c
             case maps:get(Node, NodeConns) - 1 of
                 0 ->
                     %% The node truly went down, let's notify the subscribers
-                    ?log(debug, "event=node_connection_lost node=\"~s\"", [Node]),
-                    ok = gen_server:cast(self(), {notify_node_down,Node}),
+                    ?log_debug("event=node_connection_lost node=\"~s\"", [Node]),
+                    ok = gen_server:cast(self(), {notify,nodedown,Node}),
                     {noreply, State#state{pid_to_node=NewPTN, node_conns=maps:remove(Node, NodeConns)}};
                 RemainingConns ->
                     %% Just a single connection went down, not a notification event

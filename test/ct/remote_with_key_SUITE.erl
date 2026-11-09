@@ -20,10 +20,8 @@ all() ->
     gen_rpc_test_helper:get_test_functions(?MODULE).
 
 init_per_suite(Config) ->
-    %% Starting Distributed Erlang on local node
-    {ok, _Pid} = gen_rpc_test_helper:start_distribution(?MASTER),
-    %% Setup the app locally
-    ok = gen_rpc_test_helper:start_master(tcp),
+    %% Starting Distributed Erlang and the app on local node
+    ok = gen_rpc_test_helper:start_distributed_master(tcp),
     Config.
 
 end_per_suite(_Config) ->
@@ -124,16 +122,14 @@ async_call_nb_yield_infinity(_Config) ->
 
 client_inactivity_timeout(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call({?SLAVE,random_key}, os, timestamp),
-    ok = timer:sleep(600),
     ClientName = gen_rpc_helper:make_process_name("client", {?SLAVE,random_key}),
-    undefined = erlang:whereis(ClientName),
+    ok = gen_rpc_test_helper:wait_until(fun() -> erlang:whereis(ClientName) =:= undefined end, 2000),
     [] = supervisor:which_children(gen_rpc_client_sup).
 
 server_inactivity_timeout(_Config) ->
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call({?SLAVE,random_key}, os, timestamp),
-    ok = timer:sleep(600),
-    ClientName = gen_rpc_helper:make_process_name("client", ?SLAVE),
-    undefined = erlang:whereis(ClientName),
+    ClientName = gen_rpc_helper:make_process_name("client", {?SLAVE,random_key}),
+    ok = gen_rpc_test_helper:wait_until(fun() -> erlang:whereis(ClientName) =:= undefined end, 2000),
     [] = supervisor:which_children(gen_rpc_client_sup).
 
 random_local_tcp_close(_Config) ->
@@ -141,7 +137,8 @@ random_local_tcp_close(_Config) ->
     {_Mega2, _Sec2, _Micro2} = rpc:call(?SLAVE, gen_rpc, call, [{?MASTER,random_key2}, os, timestamp, []]),
     [{_,AccPid,_,_}, _Other] = supervisor:which_children(gen_rpc_acceptor_sup),
     true = erlang:exit(AccPid, kill),
-    ok = timer:sleep(600), % Give some time to the supervisor to kill the children
+    % Give some time to the supervisor to kill the children
+    ok = gen_rpc_test_helper:wait_until(fun() -> length(supervisor:which_children(gen_rpc_acceptor_sup)) =:= 1 end, 2000),
     [?MASTER] = rpc:call(?SLAVE, gen_rpc, nodes, []),
     [_OtherAcceptor] = supervisor:which_children(gen_rpc_acceptor_sup),
     [_Client] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_client_sup]).
@@ -151,7 +148,7 @@ random_remote_tcp_close(_Config) ->
     {_Mega2, _Sec2, _Micro2} = gen_rpc:call({?SLAVE,random_key2}, os, timestamp),
     [{_,AccPid,_,_}, _Other] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
     true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
-    ok = timer:sleep(600),
+    ok = gen_rpc_test_helper:wait_until(fun() -> length(rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup])) =:= 1 end, 2000),
     [?SLAVE] = gen_rpc:nodes(),
     [_Client] = supervisor:which_children(gen_rpc_client_sup),
     [_OtherAcceptor] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]).

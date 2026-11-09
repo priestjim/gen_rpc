@@ -65,12 +65,12 @@ start_disabled(_Config) ->
     StatFun = fun() -> {ok, 42} end,
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 0, timeout),
     ok = gen_rpc_keepalive:cancel(KeepAlive),
-    ok = expect_no_message(100).
+    ok = gen_rpc_test_helper:expect_no_message(100).
 
 start_enabled(_Config) ->
     StatFun = fun() -> {ok, 42} end,
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, timeout),
-    ok = expect_message(timeout, 2000),
+    ok = gen_rpc_test_helper:expect_message(timeout, 2000),
     ok = gen_rpc_keepalive:cancel(KeepAlive).
 
 start_error(_Config) ->
@@ -111,7 +111,7 @@ cancel(_Config) ->
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, timeout),
     ok = gen_rpc_keepalive:cancel(KeepAlive),
     %% The cancelled timer never fires
-    ok = expect_no_message(1500),
+    ok = gen_rpc_test_helper:expect_no_message(1500),
     %% Cancelling twice is not a problem
     ok = gen_rpc_keepalive:cancel(KeepAlive),
     %% Neither is cancelling a disabled keepalive
@@ -123,14 +123,14 @@ resume(_Config) ->
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, timeout),
     ok = gen_rpc_keepalive:cancel(KeepAlive),
     KeepAlive1 = gen_rpc_keepalive:resume(KeepAlive),
-    ok = expect_message(timeout, 2000),
+    ok = gen_rpc_test_helper:expect_message(timeout, 2000),
     ok = gen_rpc_keepalive:cancel(KeepAlive1).
 
 %% The message sent to the owner is the one configured
 timer_message(_Config) ->
     StatFun = fun() -> {ok, 42} end,
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, {keepalive, check}),
-    ok = expect_message({keepalive, check}, 2000),
+    ok = gen_rpc_test_helper:expect_message({keepalive, check}, 2000),
     ok = gen_rpc_keepalive:cancel(KeepAlive).
 
 %%% ===================================================
@@ -142,22 +142,22 @@ client_stays_alive(_Config) ->
     ok = application:set_env(?APP, keepalive_interval, 1),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 2500]),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ClientPid = get_client_pid(?SLAVE),
+    ClientPid = gen_rpc_test_helper:get_client_pid(?SLAVE),
     true = is_pid(ClientPid),
     ok = timer:sleep(5000),
-    ClientPid = get_client_pid(?SLAVE),
+    ClientPid = gen_rpc_test_helper:get_client_pid(?SLAVE),
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?SLAVE, os, timestamp),
-    ClientPid = get_client_pid(?SLAVE).
+    ClientPid = gen_rpc_test_helper:get_client_pid(?SLAVE).
 
 %% Without keepalive the server closes the idle connection
 client_without_keepalive_is_closed_by_server(_Config) ->
     ok = application:set_env(?APP, keepalive_interval, 0),
     ok = rpc:call(?SLAVE, application, set_env, [?APP, server_inactivity_timeout, 500]),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ClientPid = get_client_pid(?SLAVE),
+    ClientPid = gen_rpc_test_helper:get_client_pid(?SLAVE),
     true = is_pid(ClientPid),
     ok = timer:sleep(1500),
-    undefined = get_client_pid(?SLAVE),
+    undefined = gen_rpc_test_helper:get_client_pid(?SLAVE),
     %% A new call transparently establishes a new connection
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?SLAVE, os, timestamp).
 
@@ -167,9 +167,9 @@ client_inactivity_timeout_ignores_keepalive(_Config) ->
     ok = application:set_env(?APP, keepalive_interval, 1),
     ok = application:set_env(?APP, client_inactivity_timeout, 2500),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    true = is_pid(get_client_pid(?SLAVE)),
+    true = is_pid(gen_rpc_test_helper:get_client_pid(?SLAVE)),
     ok = timer:sleep(4000),
-    undefined = get_client_pid(?SLAVE),
+    undefined = gen_rpc_test_helper:get_client_pid(?SLAVE),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity).
 
 %%% ===================================================
@@ -186,19 +186,3 @@ counting_stat_fun() ->
         {ok, Val}
     end.
 
-get_client_pid(Node) ->
-    erlang:whereis(gen_rpc_helper:make_process_name("client", Node)).
-
-expect_message(Msg, Timeout) ->
-    receive
-        Msg -> ok
-    after
-        Timeout -> {error, {no_message, Msg}}
-    end.
-
-expect_no_message(Timeout) ->
-    receive
-        Msg -> {error, {unexpected_message, Msg}}
-    after
-        Timeout -> ok
-    end.

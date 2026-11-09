@@ -14,12 +14,12 @@
 
 %%% Include the HUT library
 -include_lib("hut/include/hut.hrl").
+%%% Include the debug logging macros
+-include("logging.hrl").
 %%% Include this library's name macro
 -include("app.hrl").
 %%% Include TCP macros
 -include("tcp.hrl").
-%%% Include helpful guard macros
--include("guards.hrl").
 
 %%% Public API
 -export([connect/2,
@@ -28,8 +28,11 @@
         get_peer/1,
         send/2,
         activate_socket/1,
+        recv/2,
+        close/1,
         authenticate_to_server/2,
         authenticate_client/3,
+        verify_peer/2,
         copy_sock_opts/2,
         set_controlling_process/2,
         set_send_timeout/2,
@@ -44,9 +47,9 @@
 connect(Node, Port) when is_atom(Node) ->
     Host = gen_rpc_helper:host_from_node(Node),
     ConnTO = gen_rpc_helper:get_connect_timeout(),
-    case gen_tcp:connect(Host, Port, ?TCP_DEFAULT_OPTS, ConnTO) of
+    case gen_tcp:connect(Host, Port, gen_rpc_helper:get_tcp_options(client), ConnTO) of
         {ok, Socket} ->
-            ?log(debug, "event=connect_to_remote_server peer=\"~s\" socket=\"~s\" result=success",
+            ?log_debug("event=connect_to_remote_server peer=\"~s\" socket=\"~s\" result=success",
                  [Node, gen_rpc_helper:socket_to_string(Socket)]),
             {ok, Socket};
         {error, Reason} ->
@@ -56,7 +59,7 @@ connect(Node, Port) when is_atom(Node) ->
 
 -spec listen(inet:port_number()) -> {ok, port()} | {error, term()}.
 listen(Port) when is_integer(Port) ->
-    gen_tcp:listen(Port, ?TCP_DEFAULT_OPTS).
+    gen_tcp:listen(Port, gen_rpc_helper:get_tcp_options(server)).
 
 -spec accept(port()) -> {ok, inet:socket()} | {error, term()}.
 accept(Socket) when is_port(Socket) ->
@@ -77,94 +80,32 @@ send(Socket, Data) when is_port(Socket), is_binary(Data) ->
             ?log(error, "event=send_data_failed socket=\"~s\" reason=\"~p\"", [gen_rpc_helper:socket_to_string(Socket), Reason]),
             {error, {badtcp,Reason}};
         ok ->
-            ?log(debug, "event=send_data_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
+            ?log_debug("event=send_data_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
             ok
     end.
+
+-spec recv(port(), timeout()) -> {ok, binary()} | {error, term()}.
+recv(Socket, Timeout) when is_port(Socket) ->
+    gen_tcp:recv(Socket, 0, Timeout).
+
+-spec close(port()) -> ok.
+close(Socket) when is_port(Socket) ->
+    gen_tcp:close(Socket).
 
 %% Authenticate to a server
 -spec authenticate_to_server(atom(), port()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_to_server(Node, Socket) ->
-    Cookie = gen_rpc_helper:get_cookie_per_node(Node),
-    Packet = erlang:term_to_binary({gen_rpc_authenticate_connection, node(), Cookie}),
-    SendTO = gen_rpc_helper:get_send_timeout(undefined),
-    RecvTO = gen_rpc_helper:get_call_receive_timeout(undefined),
-    ok = set_send_timeout(Socket, SendTO),
-    case gen_tcp:send(Socket, Packet) of
-        {error, Reason} ->
-            ?log(error, "event=authentication_connection_failed socket=\"~s\" reason=\"~p\"",
-                 [gen_rpc_helper:socket_to_string(Socket), Reason]),
-            ok = gen_tcp:close(Socket),
-            {error, {badtcp,Reason}};
-        ok ->
-            ?log(debug, "event=authentication_connection_succeeded socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
-            case gen_tcp:recv(Socket, 0, RecvTO) of
-                {ok, RecvPacket} ->
-                    case erlang:binary_to_term(RecvPacket) of
-                        gen_rpc_connection_authenticated ->
-                            ?log(debug, "event=connection_authenticated socket=\"~s\"", [gen_rpc_helper:socket_to_string(Socket)]),
-                            ok;
-                        {gen_rpc_connection_rejected, invalid_cookie} ->
-                            ?log(error, "event=authentication_rejected socket=\"~s\" reason=\"invalid_cookie\"",
-                                 [gen_rpc_helper:socket_to_string(Socket)]),
-                            ok = gen_tcp:close(Socket),
-                            {error, {badrpc,invalid_cookie}};
-                        _Else ->
-                            ?log(error, "event=authentication_reception_error socket=\"~s\" reason=\"invalid_payload\"",
-                                 [gen_rpc_helper:socket_to_string(Socket)]),
-                            ok = gen_tcp:close(Socket),
-                            {error, {badrpc,invalid_message}}
-                    end;
-                {error, Reason} ->
-                    ?log(error, "event=authentication_reception_failed socket=\"~s\" reason=\"~p\"",
-                         [gen_rpc_helper:socket_to_string(Socket), Reason]),
-                    ok = gen_tcp:close(Socket),
-                    {error, {badtcp,Reason}}
-            end
-    end.
+    gen_rpc_driver:authenticate_to_server(?MODULE, Node, Socket).
 
 %% Authenticate a connected client
 -spec authenticate_client(port(), tuple(), binary()) -> ok | {error, {badtcp | badrpc, term()}}.
 authenticate_client(Socket, Peer, Data) ->
-    try erlang:binary_to_term(Data) of
-        {gen_rpc_authenticate_connection, Node, Cookie} when is_atom(Node), is_atom(Cookie) ->
-            ValidCookie = gen_rpc_helper:get_cookie_per_node(Node),
-            if
-                ValidCookie == Cookie ->
-                    Packet = erlang:term_to_binary(gen_rpc_connection_authenticated),
-                    Result = case send(Socket, Packet) of
-                        {error, Reason} ->
-                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]),
-                            {error, {badtcp,Reason}};
-                        ok ->
-                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
-                            ok = activate_socket(Socket),
-                            ok
-                    end,
-                    Result;
-                true ->
-                    ?log(error, "event=invalid_cookie_received socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                         [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node]),
-                    Packet = erlang:term_to_binary({gen_rpc_connection_rejected, invalid_cookie}),
-                    ok = case send(Socket, Packet) of
-                        {error, Reason} ->
-                            ?log(error, "event=transmission_failed socket=\"~s\" peer=\"~s\" node=\"~s\" reason=\"~p\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node, Reason]);
-                        ok ->
-                            ?log(debug, "event=transmission_succeeded socket=\"~s\" peer=\"~s\" node=\"~s\"",
-                                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Node])
-                    end,
-                    {error, {badrpc,invalid_cookie}}
-            end;
-        OtherData ->
-            ?log(debug, "event=erroneous_data_received socket=\"~s\" peer=\"~s\" data=\"~p\"",
-                 [gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), OtherData]),
-            {error, {badrpc,erroneous_data}}
-    catch
-        error:badarg ->
-            {error, {badtcp,corrupt_data}}
-    end.
+    gen_rpc_driver:authenticate_client(?MODULE, Socket, Peer, Data).
+
+%% Plain TCP has no means to verify the identity of a client
+-spec verify_peer(port(), atom()) -> ok.
+verify_peer(_Socket, _Node) ->
+    ok.
 
 %% Taken from prim_inet.  We are merely copying some socket options from the
 %% listening socket to the new acceptor socket.
@@ -173,13 +114,10 @@ copy_sock_opts(ListSock, AccSock) when is_port(ListSock), is_port(AccSock) ->
     true = inet_db:register_socket(AccSock, inet_tcp),
     case prim_inet:getopts(ListSock, ?ACCEPTOR_COPY_TCP_OPTS) of
         {ok, SockOpts} ->
-            case prim_inet:setopts(AccSock, SockOpts) of
-                ok -> ok;
-                Error -> Error
-            end;
+            prim_inet:setopts(AccSock, SockOpts);
         Error ->
             Error
-        end.
+    end.
 
 -spec get_peer(port()) -> {inet:ip4_address(), inet:port_number()}.
 get_peer(Socket) when is_port(Socket) ->
@@ -197,36 +135,10 @@ set_send_timeout(Socket, SendTO) when is_port(Socket) ->
 
 -spec set_acceptor_opts(port()) -> ok.
 set_acceptor_opts(Socket) when is_port(Socket) ->
-    ok = set_socket_keepalive(os:type(), Socket),
+    ok = inet:setopts(Socket, gen_rpc_helper:get_socket_keepalive_options()),
     ok = inet:setopts(Socket, [{send_timeout, gen_rpc_helper:get_send_timeout(undefined)}|?ACCEPTOR_DEFAULT_TCP_OPTS]),
     ok.
 
 -spec getstat(port(), list()) -> {ok, list()} | {error, term()}.
 getstat(Socket, OptNames) ->
     inet:getstat(Socket, OptNames).
-
-%%% ===================================================
-%%% Private functions
-%%% ===================================================
-set_socket_keepalive({unix, darwin}, Socket) ->
-    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
-    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
-    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
-    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_SO_KEEPALIVE, <<1:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?DARWIN_SOL_SOCKET, ?DARWIN_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
-    ok;
-
-set_socket_keepalive({unix, linux}, Socket) ->
-    {ok, KeepIdle} = application:get_env(?APP, socket_keepalive_idle),
-    {ok, KeepInterval} = application:get_env(?APP, socket_keepalive_interval),
-    {ok, KeepCount} = application:get_env(?APP, socket_keepalive_count),
-    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_SOCKET, ?LINUX_SO_KEEPALIVE, <<1:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPIDLE, <<KeepIdle:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPINTVL, <<KeepInterval:32/native>>}]),
-    ok = inet:setopts(Socket, [{raw, ?LINUX_SOL_TCP, ?LINUX_TCP_KEEPCNT, <<KeepCount:32/native>>}]),
-    ok;
-
-set_socket_keepalive(_Unsupported, _Socket) ->
-    ok.

@@ -1,0 +1,93 @@
+name: Release
+
+# Cuts a release from main. It is only ever triggered by hand:
+#
+#   1. Runs the whole CI workflow against main
+#   2. Promotes the "Unreleased" section of CHANGELOG.md to the new version,
+#      sets the version in src/gen_rpc.app.src and mix.exs, commits and tags it
+#   3. Pushes the commit and the tag, creates the GitHub release with the
+#      changelog entries as its description and publishes the package to hex.pm
+#
+# Requires the HEX_API_KEY repository secret. If main is protected, the
+# github-actions bot needs to be allowed to push to it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 3.0.0 (the tag and the release title use it verbatim)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  release:
+    name: Release ${{ inputs.version }}
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check the version is free
+        run: |
+          if git rev-parse -q --verify "refs/tags/${VERSION}" > /dev/null; then
+            echo "::error::Tag ${VERSION} already exists"
+            exit 1
+          fi
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '29'
+          elixir-version: '1.20'
+
+      - name: Prepare the release files
+        run: .github/scripts/prepare-release.sh "${VERSION}" "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Check the hex package
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix hex.build
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md mix.exs src/gen_rpc.app.src
+          git commit -m "Release ${VERSION}"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+
+      - name: Push the commit and the tag
+        run: git push --atomic origin HEAD:main "refs/tags/${VERSION}"
+
+      - name: Create the GitHub release
+        run: |
+          PRERELEASE=""
+          if [[ "${VERSION}" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          gh release create "${VERSION}" --verify-tag --title "${VERSION}" --notes-file "${RUNNER_TEMP}/release-notes.md" ${PRERELEASE}
+
+      - name: Publish to hex.pm
+        run: mix hex.publish --yes

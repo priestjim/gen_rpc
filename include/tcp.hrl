@@ -36,6 +36,7 @@
         active]).
 
 -define(DARWIN_SOL_SOCKET, 16#ffff).
+-define(DARWIN_SOL_TCP, 16#0006).
 -define(DARWIN_SO_KEEPALIVE, 16#0008).
 -define(DARWIN_TCP_KEEPIDLE, 16#10). % idle time used when SO_KEEPALIVE is enabled
 -define(DARWIN_TCP_KEEPINTVL, 16#101). % interval between keepalives
