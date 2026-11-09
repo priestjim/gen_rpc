@@ -4,6 +4,8 @@ Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
 ## Unreleased
 
+## 3.0.0
+
 - Deprecate support for Erlang < 25.0 and support up to Erlang/OTP 29
 - Support monitoring nodes with `gen_rpc:monitor_node/2`
 - Support EC SSL certificates, the RSA test certificates (`priv/ssl`) were removed
