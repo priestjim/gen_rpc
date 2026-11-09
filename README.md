@@ -164,6 +164,8 @@ and pass them as the node list in the multi-node function.
 
 - `tcp_server_options` and `tcp_client_options`: Lists of custom `gen_tcp` socket options for the plain TCP driver, applied to the listening socket and to all outgoing connections respectively (they are global, not per node). They are merged with the defaults in `include/tcp.hrl` and override them by option name, e.g. `{tcp_client_options, [{sndbuf, 262144}, {nodelay, false}]}`. Do not override `binary`, `{packet,4}` or `{active,_}`, since `gen_rpc` depends on them. Defaults to `[]`. `SO_REUSEPORT` is not enabled by default; to let multiple instances share a listening port, set `{tcp_server_options, [{reuseport, true}]}` (OTP 26+).
 
+- `named_acceptors`: Register each acceptor process under the name `gen_rpc.acceptor.<ip>:<port>` (the address and port of the connected peer) so that it can be found with `whereis/1` and shows up by name in observer. The peer's port changes with every connection and atoms are never garbage collected, so every connection creates a new atom for the lifetime of the VM. Only enable it if you need this observability and can afford the growth of the atom table, for example not with nodes that receive lots of short-lived connections. Client processes are always named after the node (and key) they connect to, since they are looked up by name. Defaults to `false`.
+
 - `socket_keepalive_idle`: Seconds idle after the last packet of data sent to start sending keepalive probes (applies to both drivers, on Linux and macOS only).
 
 - `socket_keepalive_interval`: Seconds between keepalive probes.

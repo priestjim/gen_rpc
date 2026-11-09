@@ -139,6 +139,24 @@ tcp_custom_options(_Config) ->
     end,
     ok.
 
+%% Acceptors are only registered under a name if asked to
+named_acceptors(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
+    [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
+    [] = erlang:process_info(AccPid, registered_name),
+    ok = reset_connection(),
+    try
+        ok = application:set_env(?APP, named_acceptors, true),
+        {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?MASTER, os, timestamp),
+        [{_,NamedAccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
+        {registered_name, Name} = erlang:process_info(NamedAccPid, registered_name),
+        "gen_rpc.acceptor." ++ _Peer = erlang:atom_to_list(Name)
+    after
+        ok = application:set_env(?APP, named_acceptors, false),
+        ok = reset_connection()
+    end,
+    ok.
+
 %% A client that is slow to start must not hold up the clients of the other nodes
 slow_client_start(_Config) ->
     SlowNode = 'slow_node@127.0.0.1',
@@ -401,6 +419,14 @@ client_config_stub(_Config) ->
 %%% ===================================================
 %%% Auxiliary functions for test cases
 %%% ===================================================
+%% Close the connection to the master node and wait for its acceptor to go away
+reset_connection() ->
+    _ = case gen_rpc_test_helper:get_client_pid(?MASTER) of
+        undefined -> ok;
+        _Pid -> gen_rpc_client:stop(?MASTER)
+    end,
+    gen_rpc_test_helper:wait_until(fun() -> supervisor:which_children(gen_rpc_acceptor_sup) =:= [] end, 2000).
+
 %% The socket of the client of the master node, it is the first field of the state record
 client_socket() ->
     State = sys:get_state(gen_rpc_test_helper:get_client_pid(?MASTER)),

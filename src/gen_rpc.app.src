@@ -87,6 +87,11 @@
         {socket_keepalive_interval, 5},
         %% Probes lost to close the connection
         {socket_keepalive_count, 2},
+        %% Register each acceptor process under a name that contains the address
+        %% and port of the connected peer, for observability. Every connection
+        %% creates a new atom, atoms are never garbage collected, so only enable
+        %% this if you can afford the growth of the atom table
+        {named_acceptors, false},
         %% Cookie per node configuration
         %% Set a separate cookie per node by setting
         %% {internal, #{ Node::atom() => Cookie()::atom() }}

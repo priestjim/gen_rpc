@@ -4,6 +4,8 @@ Below is a non-exhaustive list of changes between `gen_rpc` versions.
 
 ## Unreleased
 
+- Acceptor processes are not registered under a name by default, since each connection created a new atom that is never garbage collected. Set `named_acceptors` to `true` to name them after the connected peer
+
 ## 3.0.0
 
 - Deprecate support for Erlang < 25.0 and support up to Erlang/OTP 29

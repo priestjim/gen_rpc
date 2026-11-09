@@ -40,6 +40,7 @@
         get_call_receive_timeout/1,
         get_sbcast_receive_timeout/0,
         get_keepalive_interval/0,
+        get_named_acceptors/0,
         get_ssl_groups/0,
         get_client_inactivity_timeout/0,
         get_server_inactivity_timeout/0,
@@ -263,6 +264,11 @@ get_ssl_groups() ->
 -spec get_keepalive_interval() -> non_neg_integer().
 get_keepalive_interval() ->
     get_env(keepalive_interval).
+
+%% Returns whether the acceptor processes are registered under a name
+-spec get_named_acceptors() -> boolean().
+get_named_acceptors() ->
+    get_env(named_acceptors).
 
 %% Returns default inactivity timeouts for the client and the server
 -spec get_client_inactivity_timeout() -> timeout().
