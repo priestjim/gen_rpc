@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release, e.g. 3.0.0 (the tag and the release title use it verbatim)'
+        description: "Version to release, e.g. 3.0.0 (the tag and the release title use it verbatim)"
         required: true
         type: string
 
@@ -59,8 +59,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '29'
-          elixir-version: '1.20'
+          otp-version: "29"
+          elixir-version: "1.20"
 
       - name: Prepare the release files
         run: .github/scripts/prepare-release.sh "${VERSION}" "${RUNNER_TEMP}/release-notes.md"
@@ -75,7 +75,7 @@ jobs:
       - name: Commit and tag
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "1754527+priestjim@users.noreply.github.com"
           git add CHANGELOG.md mix.exs src/gen_rpc.app.src
           git commit -m "Release ${VERSION}"
           git tag -a "${VERSION}" -m "Release ${VERSION}"

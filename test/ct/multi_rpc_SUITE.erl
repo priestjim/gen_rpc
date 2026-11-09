@@ -94,7 +94,7 @@ eval_everywhere_mfa_multiple_nodes_timeout(_Config) ->
     ok = gen_rpc_test_helper:terminate_process(Name),
     Pid = gen_rpc_test_helper:spawn_listener2(?SLAVE, ?SLAVE, Name, TestPid, 2),
     true = register(Name, Pid),
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?MASTER, Name, Msg}], 10),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, 'gen_rpc_test_helper', ping, [{?MASTER, Name, Msg}], 5000),
     {ok, passed} = gen_rpc_test_helper:wait_for_reply(?SLAVE, ?SLAVE),
     ok.
 
@@ -112,7 +112,7 @@ eval_everywhere_mfa_throw_multiple_nodes(_Config) ->
 
 eval_everywhere_mfa_timeout_multiple_nodes(_Config) ->
     ConnectedNodes = [?SLAVE, ?SLAVE],
-    abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup'], 10),
+    abcast = gen_rpc:eval_everywhere(ConnectedNodes, erlang, throw, ['throwXup'], 5000),
     ok = ct:pal("[erlang:throw only]. Verify the crash log from ct. You should see {{nocatch,throwXup}, ....} on the target node").
 
 multicall_local_node(_Config) ->

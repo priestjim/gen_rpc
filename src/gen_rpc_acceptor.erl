@@ -93,7 +93,10 @@ waiting_for_socket({call,From}, {socket_ready,Socket}, #state{driver=Driver, dri
     ok = DriverMod:set_acceptor_opts(Socket),
     ok = DriverMod:activate_socket(Socket),
     ok = gen_statem:reply(From, ok),
-    {next_state, waiting_for_auth, State#state{socket=Socket}, gen_rpc_helper:get_authentication_timeout()}.
+    {next_state, waiting_for_auth, State#state{socket=Socket}, gen_rpc_helper:get_authentication_timeout()};
+
+waiting_for_socket(info, {'EXIT', _Pid, _Reason} = Msg, State) ->
+    handle_exit_signal(Msg, State).
 
 waiting_for_auth(info, {Driver,Socket,Data}, #state{socket=Socket, driver=Driver, driver_mod=DriverMod, peer=Peer} = State) ->
     case DriverMod:authenticate_client(Socket, Peer, Data) of
@@ -112,7 +115,10 @@ waiting_for_auth(info, {DriverClosed, Socket} = Msg, #state{socket=Socket, drive
     handle_socket_event(Msg, State);
 
 waiting_for_auth(info, {DriverError, Socket, _Reason} = Msg, #state{socket=Socket, driver_error=DriverError} = State) ->
-    handle_socket_event(Msg, State).
+    handle_socket_event(Msg, State);
+
+waiting_for_auth(info, {'EXIT', _Pid, _Reason} = Msg, State) ->
+    handle_exit_signal(Msg, State).
 
 waiting_for_data(info, {Driver,Socket,Data},
                  #state{socket=Socket, driver=Driver, driver_mod=DriverMod, peer=Peer, control=Control, list=List} = State) ->
@@ -217,7 +223,10 @@ waiting_for_data(info, {DriverClosed, Socket} = Msg, #state{socket=Socket, drive
     handle_socket_event(Msg, State);
 
 waiting_for_data(info, {DriverError, Socket, _Reason} = Msg, #state{socket=Socket, driver_error=DriverError} = State) ->
-    handle_socket_event(Msg, State).
+    handle_socket_event(Msg, State);
+
+waiting_for_data(info, {'EXIT', _Pid, _Reason} = Msg, State) ->
+    handle_exit_signal(Msg, State).
 
 terminate(_Reason, _StateName, _State) ->
     ok.
@@ -238,6 +247,14 @@ handle_socket_event({DriverError, Socket, Reason}, #state{socket=Socket, driver=
     ?log(error, "message=channel_error driver=~s socket=\"~s\" peer=\"~s\" reason=\"~p\" action=stopping",
          [Driver, gen_rpc_helper:socket_to_string(Socket), gen_rpc_helper:peer_to_string(Peer), Reason]),
     {stop, normal, State}.
+
+%% We trap exits, so an exit signal from any process but our parent (which
+%% gen_statem takes care of) arrives as a message. Behave as if we did not trap
+%% exits and go down with the reason of the signal
+handle_exit_signal({'EXIT', Pid, Reason}, #state{driver=Driver, peer=Peer} = State) ->
+    ?log(notice, "message=exit_signal event=exit_signal_received driver=~s peer=\"~s\" from=\"~p\" reason=\"~p\" action=stopping",
+         [Driver, gen_rpc_helper:peer_to_string(Peer), Pid, Reason]),
+    {stop, Reason, State}.
 
 %% Re-enable the socket and wait for the next message
 continue(DriverMod, Socket) ->

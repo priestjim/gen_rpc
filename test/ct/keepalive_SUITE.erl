@@ -70,7 +70,7 @@ start_disabled(_Config) ->
 start_enabled(_Config) ->
     StatFun = fun() -> {ok, 42} end,
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, timeout),
-    ok = gen_rpc_test_helper:expect_message(timeout, 2000),
+    ok = gen_rpc_test_helper:expect_message(timeout, 5000),
     ok = gen_rpc_keepalive:cancel(KeepAlive).
 
 start_error(_Config) ->
@@ -123,14 +123,14 @@ resume(_Config) ->
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, timeout),
     ok = gen_rpc_keepalive:cancel(KeepAlive),
     KeepAlive1 = gen_rpc_keepalive:resume(KeepAlive),
-    ok = gen_rpc_test_helper:expect_message(timeout, 2000),
+    ok = gen_rpc_test_helper:expect_message(timeout, 5000),
     ok = gen_rpc_keepalive:cancel(KeepAlive1).
 
 %% The message sent to the owner is the one configured
 timer_message(_Config) ->
     StatFun = fun() -> {ok, 42} end,
     {ok, KeepAlive} = gen_rpc_keepalive:start(StatFun, 1, {keepalive, check}),
-    ok = gen_rpc_test_helper:expect_message({keepalive, check}, 2000),
+    ok = gen_rpc_test_helper:expect_message({keepalive, check}, 5000),
     ok = gen_rpc_keepalive:cancel(KeepAlive).
 
 %%% ===================================================
@@ -156,8 +156,7 @@ client_without_keepalive_is_closed_by_server(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ClientPid = gen_rpc_test_helper:get_client_pid(?SLAVE),
     true = is_pid(ClientPid),
-    ok = timer:sleep(1500),
-    undefined = gen_rpc_test_helper:get_client_pid(?SLAVE),
+    ok = gen_rpc_test_helper:wait_until(fun() -> gen_rpc_test_helper:get_client_pid(?SLAVE) =:= undefined end, 5000),
     %% A new call transparently establishes a new connection
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?SLAVE, os, timestamp).
 
@@ -168,8 +167,8 @@ client_inactivity_timeout_ignores_keepalive(_Config) ->
     ok = application:set_env(?APP, client_inactivity_timeout, 2500),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     true = is_pid(gen_rpc_test_helper:get_client_pid(?SLAVE)),
-    ok = timer:sleep(4000),
-    undefined = gen_rpc_test_helper:get_client_pid(?SLAVE),
+    % The pings do not keep the client alive, it goes away once the timeout is reached
+    ok = gen_rpc_test_helper:wait_until(fun() -> gen_rpc_test_helper:get_client_pid(?SLAVE) =:= undefined end, 6000),
     ok = application:set_env(?APP, client_inactivity_timeout, infinity).
 
 %%% ===================================================

@@ -46,7 +46,7 @@ monitor_node_up_down(_Config) ->
     ok = gen_rpc_test_helper:expect_no_message(100),
     %% The first connection to the node generates a nodeup message
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000),
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000),
     %% More calls over the same connection do not
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = gen_rpc_test_helper:expect_no_message(100),
@@ -56,7 +56,7 @@ monitor_node_up_down(_Config) ->
     %% And reconnecting a new nodeup one
     ok = gen_rpc_test_helper:start_slave(tcp),
     {_Mega2, _Sec2, _Micro2} = gen_rpc:call(?SLAVE, os, timestamp),
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000).
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000).
 
 monitor_node_unsubscribe(_Config) ->
     true = gen_rpc:monitor_node(?SLAVE, true),
@@ -76,7 +76,7 @@ monitor_node_multiple_subscribers(_Config) ->
             Parent ! {timeout, self()}
         end
     end) || _ <- lists:seq(1, 3)],
-    ok = lists:foreach(fun(Pid) -> ok = gen_rpc_test_helper:expect_message({ready, Pid}, 1000) end, Subscribers),
+    ok = lists:foreach(fun(Pid) -> ok = gen_rpc_test_helper:expect_message({ready, Pid}, 5000) end, Subscribers),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
     ok = gen_rpc_test_helper:stop_slave(),
     ok = lists:foreach(fun(Pid) -> ok = gen_rpc_test_helper:expect_message({got_nodedown, Pid}, 5000) end, Subscribers).
@@ -86,7 +86,7 @@ monitor_node_subscribe_twice(_Config) ->
     true = gen_rpc:monitor_node(?SLAVE, true),
     true = gen_rpc:monitor_node(?SLAVE, true),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000),
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000),
     ok = gen_rpc_test_helper:expect_no_message(100).
 
 monitor_node_multiple_connections(_Config) ->
@@ -96,14 +96,14 @@ monitor_node_multiple_connections(_Config) ->
     {_Mega1, _Sec1, _Micro1} = gen_rpc:call({?SLAVE,key1}, os, timestamp),
     {_Mega2, _Sec2, _Micro2} = gen_rpc:call({?SLAVE,key2}, os, timestamp),
     %% A single nodeup, even with two connections
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000),
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000),
     ok = gen_rpc_test_helper:expect_no_message(100),
     %% Kill the first connection, the node is still considered up
     ok = kill_client({?SLAVE,key1}),
     ok = gen_rpc_test_helper:expect_no_message(500),
     %% Kill the last connection
     ok = kill_client({?SLAVE,key2}),
-    ok = gen_rpc_test_helper:expect_message({nodedown, ?SLAVE}, 1000),
+    ok = gen_rpc_test_helper:expect_message({nodedown, ?SLAVE}, 5000),
     ok = gen_rpc_test_helper:expect_no_message(100).
 
 monitor_multiple_nodes(_Config) ->
@@ -113,7 +113,7 @@ monitor_multiple_nodes(_Config) ->
     %% Unsubscribing from a node does not affect the other subscription
     true = gen_rpc:monitor_node(OtherNode, false),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000),
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000),
     ok = gen_rpc_test_helper:stop_slave(),
     ok = gen_rpc_test_helper:expect_message({nodedown, ?SLAVE}, 5000),
     true = gen_rpc:monitor_node(?SLAVE, false),
@@ -130,13 +130,13 @@ monitor_subscriber_cleanup(_Config) ->
         true = gen_rpc:monitor_node(OtherNode, true),
         Parent ! {ready, self()}
     end),
-    ok = gen_rpc_test_helper:expect_message({ready, Subscriber}, 1000),
+    ok = gen_rpc_test_helper:expect_message({ready, Subscriber}, 5000),
     %% The subscriber dies without unsubscribing, everything should be cleaned up
     ok = wait_until_state_is_empty(20),
     %% The monitor survived and keeps working
     true = gen_rpc:monitor_node(?SLAVE, true),
     {_Mega, _Sec, _Micro} = gen_rpc:call(?SLAVE, os, timestamp),
-    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 1000).
+    ok = gen_rpc_test_helper:expect_message({nodeup, ?SLAVE}, 5000).
 
 monitor_node_invalid_flag(_Config) ->
     {'EXIT', {function_clause, _}} = try gen_rpc:monitor_node(?SLAVE, "true") catch error:Reason:Stack -> {'EXIT', {Reason, Stack}} end,

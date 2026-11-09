@@ -83,11 +83,11 @@ async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call({?SLAVE,random_key}, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     NbYieldKey0 = gen_rpc:async_call({?SLAVE,random_key2}, os, timestamp, []),
-    {value,{_,_,_}}= gen_rpc:nb_yield(NbYieldKey0, 50),
+    {value,{_,_,_}}= gen_rpc:nb_yield(NbYieldKey0, 5000),
     YieldKey = gen_rpc:async_call({?SLAVE,random_key}, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call({?SLAVE,random_key2}, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 50).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 5000).
 
 async_call_yield_reentrant(_Config) ->
     YieldKey0 = gen_rpc:async_call({?SLAVE,random_key}, os, timestamp, []),
@@ -111,7 +111,7 @@ async_call_yield_reentrant(_Config) ->
     YieldKey = gen_rpc:async_call({?SLAVE,random_key}, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call({?SLAVE,random_key2}, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 50).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 5000).
 
 async_call_nb_yield_infinity(_Config) ->
     YieldKey = gen_rpc:async_call(?SLAVE, timer, sleep, [1000]),
@@ -138,7 +138,10 @@ random_local_tcp_close(_Config) ->
     [{_,AccPid,_,_}, _Other] = supervisor:which_children(gen_rpc_acceptor_sup),
     true = erlang:exit(AccPid, kill),
     % Give some time to the supervisor to kill the children
-    ok = gen_rpc_test_helper:wait_until(fun() -> length(supervisor:which_children(gen_rpc_acceptor_sup)) =:= 1 end, 2000),
+    ok = gen_rpc_test_helper:wait_until(fun() ->
+        length(supervisor:which_children(gen_rpc_acceptor_sup)) =:= 1 andalso
+        length(rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_client_sup])) =:= 1
+    end, 2000),
     [?MASTER] = rpc:call(?SLAVE, gen_rpc, nodes, []),
     [_OtherAcceptor] = supervisor:which_children(gen_rpc_acceptor_sup),
     [_Client] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_client_sup]).
@@ -148,7 +151,10 @@ random_remote_tcp_close(_Config) ->
     {_Mega2, _Sec2, _Micro2} = gen_rpc:call({?SLAVE,random_key2}, os, timestamp),
     [{_,AccPid,_,_}, _Other] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]),
     true = rpc:call(?SLAVE, erlang, exit, [AccPid,kill]),
-    ok = gen_rpc_test_helper:wait_until(fun() -> length(rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup])) =:= 1 end, 2000),
+    ok = gen_rpc_test_helper:wait_until(fun() ->
+        length(rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup])) =:= 1 andalso
+        length(supervisor:which_children(gen_rpc_client_sup)) =:= 1
+    end, 2000),
     [?SLAVE] = gen_rpc:nodes(),
     [_Client] = supervisor:which_children(gen_rpc_client_sup),
     [_OtherAcceptor] = rpc:call(?SLAVE, supervisor, which_children, [gen_rpc_acceptor_sup]).

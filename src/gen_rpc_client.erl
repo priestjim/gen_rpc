@@ -349,6 +349,14 @@ handle_info({DriverError, Socket, Reason}, #state{socket=Socket, driver=Driver, 
          [Driver, gen_rpc_helper:socket_to_string(Socket), Reason]),
     {stop, normal, State};
 
+%% We trap exits, so an exit signal from any process but our parent (which
+%% gen_server takes care of) arrives as a message. Behave as if we did not trap
+%% exits and go down with the reason of the signal
+handle_info({'EXIT', Pid, Reason}, #state{socket=Socket, driver=Driver} = State) ->
+    ?log(notice, "message=exit_signal event=exit_signal_received driver=~s socket=\"~s\" from=\"~p\" reason=\"~p\" action=stopping",
+         [Driver, gen_rpc_helper:socket_to_string(Socket), Pid, Reason]),
+    {stop, Reason, State};
+
 %% Handle the inactivity timeout gracefully
 handle_info(timeout, #state{socket=Socket, driver=Driver} = State) ->
     ?log(info, "message=timeout event=client_inactivity_timeout driver=~s socket=\"~s\" action=stopping",

@@ -70,10 +70,19 @@ PLT_FILE = $(CURDIR)/_plt/rebar3_$(OTP_RELEASE)_plt
 # ======================
 COMPOSE_FILE = test/integration/compose.yaml
 
+# The tests run in the master container, but the code under test runs in the
+# nodes, where it can crash without failing a test. Any error logged by a node
+# fails the run as well
 integration:
 	@docker compose -f $(COMPOSE_FILE) up --build --abort-on-container-exit --exit-code-from master; \
 	RESULT=$$?; \
+	NODE_ERRORS=$$(docker compose -f $(COMPOSE_FILE) logs --no-color node1 node2 node3 2>&1 | grep -E '\[(error|critical|alert|emergency)\]|CRASH REPORT'); \
 	docker compose -f $(COMPOSE_FILE) down --volumes --remove-orphans; \
+	if [ -n "$$NODE_ERRORS" ]; then \
+		echo "Integration tests failed, the nodes logged errors:"; \
+		echo "$$NODE_ERRORS"; \
+		[ $$RESULT -ne 0 ] || RESULT=1; \
+	fi; \
 	exit $$RESULT
 
 # =============================================================================

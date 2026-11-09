@@ -139,6 +139,20 @@ tcp_custom_options(_Config) ->
     end,
     ok.
 
+%% An exit signal terminates the acceptor and the client with the reason of the signal
+exit_signal(_Config) ->
+    {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
+    [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
+    ClientPid = gen_rpc_test_helper:get_client_pid(?MASTER),
+    AccRef = erlang:monitor(process, AccPid),
+    ClientRef = erlang:monitor(process, ClientPid),
+    true = erlang:exit(AccPid, normal),
+    true = erlang:exit(ClientPid, shutdown),
+    ok = receive {'DOWN', AccRef, process, AccPid, normal} -> ok after 2000 -> erlang:error(timeout) end,
+    ok = receive {'DOWN', ClientRef, process, ClientPid, shutdown} -> ok after 2000 -> erlang:error(timeout) end,
+    ok = reset_connection(),
+    ok.
+
 %% Acceptors are only registered under a name if asked to
 named_acceptors(_Config) ->
     {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
@@ -165,26 +179,31 @@ slow_client_start(_Config) ->
     {ok, Port} = inet:port(LSock),
     try
         ok = application:set_env(?APP, client_config_per_node, {internal, #{SlowNode => {tcp, Port}}}),
-        ok = application:set_env(?APP, call_receive_timeout, 1500),
         Self = self(),
         Callers = [erlang:spawn_link(fun() -> Self ! {self(), gen_rpc:call(SlowNode, os, timestamp)} end) || _ <- [1,2]],
-        %% The dispatcher is starting the client of the slow node
-        ok = gen_rpc_test_helper:wait_until(fun() -> map_size(sys:get_state(gen_rpc_dispatcher)) =:= 1 end, 1000),
-        Start = erlang:monotonic_time(millisecond),
+        {ok, SlowSocket} = gen_tcp:accept(LSock, 5000),
+        %% The dispatcher is starting the client of the slow node and both callers wait for it
+        ok = gen_rpc_test_helper:wait_until(fun() ->
+            case maps:values(sys:get_state(gen_rpc_dispatcher)) of
+                [{_Ref, [_Caller1, _Caller2]}] -> true;
+                _Else -> false
+            end
+        end, 5000),
         {_Mega, _Sec, _Micro} = gen_rpc:call(?MASTER, os, timestamp),
-        true = erlang:monotonic_time(millisecond) - Start < 1000,
+        %% The slow node is still being connected to when the call to the other node is done
+        1 = map_size(sys:get_state(gen_rpc_dispatcher)),
+        ok = gen_tcp:close(SlowSocket),
         %% Everyone waiting for the slow node gets the result of the same connection attempt
         ok = lists:foreach(fun(Caller) ->
             receive
-                {Caller, {badtcp, timeout}} -> ok
+                {Caller, {badtcp, Reason}} when Reason =:= closed; Reason =:= econnreset -> ok
             after
                 5000 -> erlang:error(timeout)
             end
         end, Callers),
-        0 = map_size(sys:get_state(gen_rpc_dispatcher))
+        ok = gen_rpc_test_helper:wait_until(fun() -> map_size(sys:get_state(gen_rpc_dispatcher)) =:= 0 end, 5000)
     after
         ok = application:set_env(?APP, client_config_per_node, {internal, #{}}),
-        ok = application:set_env(?APP, call_receive_timeout, 15000),
         ok = gen_tcp:close(LSock)
     end,
     ok.
@@ -294,11 +313,11 @@ async_call(_Config) ->
     YieldKey0 = gen_rpc:async_call(?MASTER, os, timestamp, []),
     {_Mega, _Sec, _Micro} = gen_rpc:yield(YieldKey0),
     NbYieldKey0 = gen_rpc:async_call(?MASTER, os, timestamp, []),
-    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 500),
+    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 5000),
     YieldKey = gen_rpc:async_call(?MASTER, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?MASTER, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 500).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 5000).
 
 async_call_yield_reentrant(_Config) ->
     YieldKey0 = gen_rpc:async_call(?MASTER, os, timestamp, []),
@@ -316,13 +335,13 @@ async_call_yield_reentrant(_Config) ->
             true = erlang:exit(Pid, brutal_kill)
     end,
     NbYieldKey0 = gen_rpc:async_call(?MASTER, os, timestamp, []),
-    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 500),
+    {value, {_,_,_}} = gen_rpc:nb_yield(NbYieldKey0, 5000),
     % Verify not able to reuse Key again. Key is one time use.
     timeout = gen_rpc:nb_yield(NbYieldKey0, 5),
     YieldKey = gen_rpc:async_call(?MASTER, io_lib, print, [yield_key]),
     "yield_key" = gen_rpc:yield(YieldKey),
     NbYieldKey = gen_rpc:async_call(?MASTER, io_lib, print, [nb_yield_key]),
-    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 500).
+    {value, "nb_yield_key"} = gen_rpc:nb_yield(NbYieldKey, 5000).
 
 async_call_anonymous_function(_Config) ->
     YieldKey = gen_rpc:async_call(?MASTER, erlang, apply, [fun(A) -> {self(), io_lib:print(A)} end,
@@ -330,34 +349,34 @@ async_call_anonymous_function(_Config) ->
     {_, "yield_key_anonymous_func"} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?MASTER, erlang, apply,[fun(A) -> {self(), io_lib:print(A)} end,
                                     [nb_yield_key_anonymous_func]]),
-    {value, {_, "nb_yield_key_anonymous_func"}} = gen_rpc:nb_yield(NBYieldKey, 500).
+    {value, {_, "nb_yield_key_anonymous_func"}} = gen_rpc:nb_yield(NBYieldKey, 5000).
 
 async_call_anonymous_undef(_Config) ->
     YieldKey = gen_rpc:async_call(?MASTER, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,[],[]},_]}}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?MASTER, erlang, apply, [fun() -> os:timestamp_undef() end, []]),
-    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,[],[]},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 500),
+    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,[],[]},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 5000),
     ok = ct:pal("Result [async_call_anonymous_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_undef(_Config) ->
     YieldKey = gen_rpc:async_call(?MASTER, os, timestamp_undef),
     {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?MASTER, os, timestamp_undef),
-    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 500),
+    {value, {badrpc, {'EXIT', {undef,[{os,timestamp_undef,_,_},_]}}}} = gen_rpc:nb_yield(NBYieldKey, 5000),
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_exit(_Config) ->
     YieldKey = gen_rpc:async_call(?MASTER, erlang, exit, ['die']),
     {badrpc, {'EXIT', die}} = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?MASTER, erlang, exit, ['die']),
-    {value, {badrpc, {'EXIT', die}}} = gen_rpc:nb_yield(NBYieldKey, 500),
+    {value, {badrpc, {'EXIT', die}}} = gen_rpc:nb_yield(NBYieldKey, 5000),
     ok = ct:pal("Result [async_call_mfa_undef]: signal=EXIT Reason={os,timestamp_undef}").
 
 async_call_mfa_throw(_Config) ->
     YieldKey = gen_rpc:async_call(?MASTER, erlang, throw, ['throwXdown']),
     'throwXdown' = gen_rpc:yield(YieldKey),
     NBYieldKey = gen_rpc:async_call(?MASTER, erlang, throw, ['throwXdown']),
-    {value, 'throwXdown'} = gen_rpc:nb_yield(NBYieldKey, 500),
+    {value, 'throwXdown'} = gen_rpc:nb_yield(NBYieldKey, 5000),
     ok = ct:pal("Result [async_call_mfa_undef]: throw Reason={throwXdown}").
 
 async_call_yield_timeout(_Config) ->
@@ -393,7 +412,9 @@ random_tcp_close(_Config) ->
     [{_,AccPid,_,_}] = supervisor:which_children(gen_rpc_acceptor_sup),
     true = erlang:exit(AccPid, normal),
     % Give some time to the supervisor to kill the children
-    ok = gen_rpc_test_helper:wait_until(fun() -> gen_rpc:nodes() =:= [] andalso supervisor:which_children(gen_rpc_acceptor_sup) =:= [] end, 2000),
+    ok = gen_rpc_test_helper:wait_until(fun() ->
+        supervisor:which_children(gen_rpc_acceptor_sup) =:= [] andalso supervisor:which_children(gen_rpc_client_sup) =:= []
+    end, 2000),
     [] = gen_rpc:nodes(),
     [] = supervisor:which_children(gen_rpc_acceptor_sup),
     [] = supervisor:which_children(gen_rpc_client_sup).

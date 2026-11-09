@@ -5,6 +5,7 @@ Below is a non-exhaustive list of changes between `gen_rpc` versions.
 ## Unreleased
 
 - Acceptor processes are not registered under a name by default, since each connection created a new atom that is never garbage collected. Set `named_acceptors` to `true` to name them after the connected peer
+- Fix the acceptor and the client crashing with a `function_clause` error when they receive an exit signal from another process. They now stop with the reason of the signal
 
 ## 3.0.0
 
